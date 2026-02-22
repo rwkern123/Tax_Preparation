@@ -3,22 +3,17 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from src.extract.text_utils import extract_amount_after_label, normalize_extracted_text
 from src.models import Form1098Data
 
 
 def _money(pattern: str, text: str) -> Optional[float]:
-    match = re.search(pattern, text, re.IGNORECASE)
-    if not match:
-        return None
-    raw = match.group(1).replace(",", "")
-    try:
-        return float(raw)
-    except ValueError:
-        return None
+    return extract_amount_after_label(pattern, text)
 
 
 def parse_1098_text(text: str) -> Form1098Data:
     data = Form1098Data()
+    text = normalize_extracted_text(text)
 
     year_match = re.search(r"\b(20\d{2})\b", text)
     if year_match:
@@ -35,11 +30,11 @@ def parse_1098_text(text: str) -> Form1098Data:
     borrowers = re.findall(r"Borrower\s*(?:name)?[:\s]+([^\n]+)", text, re.IGNORECASE)
     data.borrower_names = [b.strip()[:120] for b in borrowers if b.strip()]
 
-    data.mortgage_interest_received = _money(r"(?:1\.?\s*Mortgage\s+interest\s+received|Mortgage\s+interest\s+received)[^\d\-]*([\-]?[\d,]+(?:\.\d{2})?)", text)
-    data.points_paid = _money(r"(?:6\.?\s*Points\s+paid\s+on\s+purchase\s+of\s+principal\s+residence|Points\s+paid)[^\d\-]*([\-]?[\d,]+(?:\.\d{2})?)", text)
-    data.mortgage_insurance_premiums = _money(r"(?:5\.?\s*Mortgage\s+insurance\s+premiums|Mortgage\s+insurance\s+premiums)[^\d\-]*([\-]?[\d,]+(?:\.\d{2})?)", text)
-    data.real_estate_taxes = _money(r"(?:10\.?\s*Other|Real\s+estate\s+taxes)[^\d\-]*([\-]?[\d,]+(?:\.\d{2})?)", text)
-    data.mortgage_principal_outstanding = _money(r"(?:2\.?\s*Outstanding\s+mortgage\s+principal|Outstanding\s+mortgage\s+principal)[^\d\-]*([\-]?[\d,]+(?:\.\d{2})?)", text)
+    data.mortgage_interest_received = _money(r"(?:1\.?\s*Mortgage\s+interest\s+received|Mortgage\s+interest\s+received)", text)
+    data.points_paid = _money(r"(?:6\.?\s*Points\s+paid\s+on\s+purchase\s+of\s+principal\s+residence|Points\s+paid)", text)
+    data.mortgage_insurance_premiums = _money(r"(?:5\.?\s*Mortgage\s+insurance\s+premiums|Mortgage\s+insurance\s+premiums)", text)
+    data.real_estate_taxes = _money(r"(?:10\.?\s*Other|Real\s+estate\s+taxes)", text)
+    data.mortgage_principal_outstanding = _money(r"(?:2\.?\s*Outstanding\s+mortgage\s+principal|Outstanding\s+mortgage\s+principal)", text)
 
     populated = sum(
         1

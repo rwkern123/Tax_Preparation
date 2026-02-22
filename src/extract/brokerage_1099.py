@@ -3,21 +3,17 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from src.extract.text_utils import extract_amount_after_label, normalize_extracted_text
 from src.models import Brokerage1099Data
 
 
 def _money(label_pattern: str, text: str) -> Optional[float]:
-    m = re.search(label_pattern + r"[^\d\-]*([\-]?[\d,]+(?:\.\d{2})?)", text, flags=re.IGNORECASE)
-    if not m:
-        return None
-    try:
-        return float(m.group(1).replace(",", ""))
-    except ValueError:
-        return None
+    return extract_amount_after_label(label_pattern, text)
 
 
 def parse_brokerage_1099_text(text: str) -> Brokerage1099Data:
     data = Brokerage1099Data()
+    text = normalize_extracted_text(text)
 
     year_match = re.search(r"\b(20\d{2})\b", text)
     if year_match:

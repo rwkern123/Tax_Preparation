@@ -58,5 +58,41 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(data.real_estate_taxes, 3500.00)
 
 
+    def test_parse_w2_ocr_variants(self):
+        text = """
+        Form W-2 2024
+        Employer name ACME LLC
+        EIN 98-7654321
+        Box I Wages $85,200.00
+        Box 2 Federa1 income tax withheld 12,900
+        12 D (6,000.00)
+        """
+        data = parse_w2_text(text)
+        self.assertEqual(data.box1_wages, 85200.00)
+        self.assertEqual(data.box2_fed_withholding, 12900.00)
+        self.assertEqual(data.box12.get("D"), -6000.00)
+
+    def test_parse_1098_parentheses_amount(self):
+        text = """
+        Form 1098 2024
+        Lender name: Test Mortgage
+        Payer name: Client Name
+        Mortgage interest received ($1,200.00)
+        """
+        data = parse_1098_text(text)
+        self.assertEqual(data.mortgage_interest_received, -1200.00)
+
+    def test_parse_brokerage_dollar_amount(self):
+        text = """
+        2024 Composite Statement
+        Broker: Sample Broker
+        Ordinary dividends $1,250
+        Wash sale ($125.00)
+        """
+        data = parse_brokerage_1099_text(text)
+        self.assertEqual(data.div_ordinary, 1250.00)
+        self.assertEqual(data.b_summary["wash_sales"], -125.00)
+
+
 if __name__ == "__main__":
     unittest.main()

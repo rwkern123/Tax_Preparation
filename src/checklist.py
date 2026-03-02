@@ -46,6 +46,11 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
                 lines.append("   - If wash sales > 0, verify basis adjustments and carryover treatment.")
     else:
         lines.append("1. No 1099-B summary found.")
+
+    if data.brokerage_1099_trades:
+        lines.append(
+            f"- Trade-level 1099-B extraction produced {len(data.brokerage_1099_trades)} rows; review 1099b_trades_tax.csv and 1099b_reconciliation.json, then tie totals to broker subtotals."
+        )
     lines.append("")
 
     lines += ["## E) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]

@@ -10,6 +10,13 @@ from src.checklist import generate_checklist
 from src.classify import classify_document
 from src.config import AppConfig
 from src.extract.brokerage_1099 import parse_brokerage_1099_text
+from src.extract.form_1099b_trades import (
+    build_trade_exceptions,
+    parse_1099b_trades_text,
+    summarize_trade_reconciliation,
+    trade_to_analytics_row,
+    trade_to_tax_row,
+)
 from src.extract.form_1098 import parse_1098_text
 from src.extract.generic_pdf import get_document_text
 from src.extract.w2 import parse_w2_text
@@ -46,6 +53,52 @@ def maybe_generate_prior_year_comparison(client_dir: Path, out_dir: Path, config
     metrics = build_metrics(current_extract, prior_extract)
     report = generate_comparison_markdown(client_dir.name, config.tax_year, prior_year, metrics)
     (out_dir / "Prior_Year_Comparison.md").write_text(report, encoding="utf-8")
+
+def _write_1099b_trade_outputs(client_dir: Path, out_dir: Path, config: AppConfig, extraction: ExtractionResult) -> None:
+    if not extraction.brokerage_1099_trades:
+        return
+
+    import csv
+
+    tax_rows = [trade_to_tax_row(client_dir.name, config.tax_year, t) for t in extraction.brokerage_1099_trades]
+    analytics_rows = [trade_to_analytics_row(client_dir.name, config.tax_year, t) for t in extraction.brokerage_1099_trades]
+
+    stated_proceeds = sum((b.b_summary.get("proceeds") or 0.0) for b in extraction.brokerage_1099) or None
+    stated_cost_basis = sum((b.b_summary.get("cost_basis") or 0.0) for b in extraction.brokerage_1099) or None
+    stated_wash_sales = sum((b.b_summary.get("wash_sales") or 0.0) for b in extraction.brokerage_1099) or None
+    reconciliation = summarize_trade_reconciliation(
+        extraction.brokerage_1099_trades,
+        stated_proceeds=stated_proceeds,
+        stated_cost_basis=stated_cost_basis,
+        stated_wash_sales=stated_wash_sales,
+    )
+
+    exceptions = build_trade_exceptions(extraction.brokerage_1099_trades, reconciliation)
+
+    tax_fields = list(tax_rows[0].keys())
+    with (out_dir / "1099b_trades_tax.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=tax_fields)
+        writer.writeheader()
+        writer.writerows(tax_rows)
+
+    with (out_dir / "1099b_trades_tax.jsonl").open("w", encoding="utf-8") as f:
+        for row in tax_rows:
+            f.write(json.dumps(row, sort_keys=True) + "\n")
+
+    analytics_fields = list(analytics_rows[0].keys())
+    with (out_dir / "1099b_trades_analytics.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=analytics_fields)
+        writer.writeheader()
+        writer.writerows(analytics_rows)
+
+    with (out_dir / "1099b_reconciliation.json").open("w", encoding="utf-8") as f:
+        json.dump(reconciliation, f, indent=2, sort_keys=True)
+
+    with (out_dir / "1099b_exceptions.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["source_file", "description", "issue"])
+        writer.writeheader()
+        writer.writerows(exceptions)
+
 
 def process_client(client_dir: Path, config: AppConfig) -> None:
     out_dir = client_dir / "_workpapers"
@@ -85,7 +138,10 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
             elif doc_type == "brokerage_1099":
                 parsed = parse_brokerage_1099_text(text)
                 extraction.brokerage_1099.append(parsed)
+                trades = parse_1099b_trades_text(text, parsed.broker_name, path.name, row["sha256"])
+                extraction.brokerage_1099_trades.extend(trades)
                 key_fields = asdict(parsed)
+                key_fields["trade_count"] = len(trades)
                 issuer = parsed.broker_name
             elif doc_type == "form_1098":
                 parsed = parse_1098_text(text)
@@ -142,6 +198,7 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
 
     (out_dir / "Return_Prep_Checklist.md").write_text(checklist, encoding="utf-8")
     (out_dir / "Questions_For_Client.md").write_text(questions, encoding="utf-8")
+    _write_1099b_trade_outputs(client_dir, out_dir, config, extraction)
     maybe_generate_prior_year_comparison(client_dir, out_dir, config)
 
 

@@ -53,6 +53,30 @@ class Brokerage1099Data:
 
 
 @dataclass
+class Brokerage1099Trade:
+    broker_name: Optional[str] = None
+    source_file: Optional[str] = None
+    source_sha256: Optional[str] = None
+    source_page: Optional[int] = None
+    description: str = ""
+    security_identifier: Optional[str] = None
+    date_acquired: Optional[str] = None
+    date_sold_or_disposed: Optional[str] = None
+    proceeds_gross: Optional[float] = None
+    cost_basis: Optional[float] = None
+    wash_sale_code: Optional[str] = None
+    wash_sale_amount: Optional[float] = None
+    federal_income_tax_withheld: Optional[float] = None
+    holding_period: str = "unknown"
+    basis_reported_to_irs: str = "unknown"
+    adjustment_code: Optional[str] = None
+    adjustment_amount: Optional[float] = None
+    realized_gain_loss: Optional[float] = None
+    form_8949_box: str = ""
+    raw_trade_line: Optional[str] = None
+
+
+@dataclass
 class Form1098Data:
     lender_name: Optional[str] = None
     payer_name: Optional[str] = None
@@ -70,6 +94,7 @@ class Form1098Data:
 class ExtractionResult:
     w2: List[W2Data] = field(default_factory=list)
     brokerage_1099: List[Brokerage1099Data] = field(default_factory=list)
+    brokerage_1099_trades: List[Brokerage1099Trade] = field(default_factory=list)
     form_1098: List[Form1098Data] = field(default_factory=list)
     unknown: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -77,6 +102,7 @@ class ExtractionResult:
         return {
             "w2": [asdict(item) for item in self.w2],
             "brokerage_1099": [asdict(item) for item in self.brokerage_1099],
+            "brokerage_1099_trades": [asdict(item) for item in self.brokerage_1099_trades],
             "form_1098": [asdict(item) for item in self.form_1098],
             "unknown": self.unknown,
         }

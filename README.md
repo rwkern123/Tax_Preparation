@@ -8,6 +8,8 @@ Offline Python CLI that scans local client folders, classifies tax documents, ex
   - `Return_Prep_Checklist.md`
   - `Document_Index.csv`
   - `Data_Extract.json`
+  - `1099b_trades_tax.csv` / `1099b_trades_tax.jsonl` (when 1099-B trade rows are detected)
+  - `1099b_trades_analytics.csv`, `1099b_reconciliation.json`, and `1099b_exceptions.csv` (when 1099-B trade rows are detected)
   - `Questions_For_Client.md`
   - `Organization_Log.csv` (when `--organize` is used)
 - Document support (MVP): PDF, JPG, PNG
@@ -34,6 +36,7 @@ src/
     generic_pdf.py
     w2.py
     brokerage_1099.py
+    form_1099b_trades.py
     form_1098.py
 tests/
 outputs/
@@ -137,6 +140,11 @@ What you get:
 - Client list view with document counts, unknown/error counts, and extracted-form summary.
 - Client detail page with follow-up/review tasks from `Questions_For_Client.md`.
 - Quick visibility into which clients need attention first.
+
+## 1099-B detailed workflow (many trades)
+For a trade-level 1099-B extraction and storage workflow (Form 8949/Schedule D mapping + analytics-ready outputs), see:
+
+- `docs/1099b_workflow.md`
 
 ## Notes on privacy
 - The tool is designed for local/offline execution.

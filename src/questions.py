@@ -18,6 +18,10 @@ def generate_questions(client: str, data: ExtractionResult) -> str:
         if (b.div_foreign_tax_paid or 0) > 0:
             q.append("- Foreign tax paid was reported. Should we evaluate foreign tax credit eligibility?")
 
+
+    if data.brokerage_1099 and not data.brokerage_1099_trades:
+        q.append("- Brokerage statements were detected but no trade-level 1099-B rows were parsed. Please provide clearer copies or CSV exports from your broker.")
+
     for w in data.w2:
         if len(w.states) > 1:
             q.append("- Multiple states appear on W-2. Please confirm resident/nonresident status and move dates.")

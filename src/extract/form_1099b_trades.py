@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+
+_log = logging.getLogger(__name__)
 
 from src.extract.text_utils import normalize_extracted_text, parse_amount_token
 from src.models import Brokerage1099Trade
@@ -104,53 +107,68 @@ def _extract_trade_line(
     source_page: Optional[int],
     context: SectionContext,
 ) -> Optional[Brokerage1099Trade]:
-    date_hits = list(re.finditer(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", line))
-    if len(date_hits) < 2:
+    try:
+        date_hits = list(re.finditer(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", line))
+        if len(date_hits) < 2:
+            return None
+
+        amounts = _extract_amounts_after_disposition_date(line, date_hits)
+        if len(amounts) < 2:
+            return None
+
+        first_date = _parse_date(date_hits[0].group(0))
+        second_date = _parse_date(date_hits[1].group(0))
+
+        description, security_identifier = _extract_description_and_identifier(line[: date_hits[0].start()])
+
+        proceeds = amounts[0]
+        cost_basis = amounts[1]
+
+        # Bounds-check wash sale amount: it should be smaller than proceeds in absolute
+        # value; a larger value indicates we've misidentified a gain/loss column instead.
+        wash_sale_raw = amounts[2] if len(amounts) >= 3 else 0.0
+        if wash_sale_raw and proceeds and abs(wash_sale_raw) > abs(proceeds):
+            wash_sale_raw = 0.0
+        wash_sale_amount = wash_sale_raw
+        adjustment_amount = -abs(wash_sale_amount) if wash_sale_amount else 0.0
+
+        holding_period = context.holding_period
+        if holding_period == "unknown":
+            holding_period = _derive_holding_period(first_date, second_date)
+        if holding_period == "unknown":
+            _log.debug(
+                "form_1099b_trades: cannot determine holding period for %r (dates: %s, %s)",
+                description, first_date, second_date,
+            )
+
+        basis_reported = context.basis_reported_to_irs
+        realized_gain_loss = (proceeds - cost_basis) + adjustment_amount
+
+        return Brokerage1099Trade(
+            broker_name=broker_name,
+            source_file=source_file,
+            source_sha256=source_sha256,
+            source_page=source_page,
+            description=description,
+            security_identifier=security_identifier,
+            date_acquired=first_date,
+            date_sold_or_disposed=second_date,
+            proceeds_gross=proceeds,
+            cost_basis=cost_basis,
+            wash_sale_code="W" if wash_sale_amount else None,
+            wash_sale_amount=wash_sale_amount,
+            federal_income_tax_withheld=0.0,
+            holding_period=holding_period,
+            basis_reported_to_irs=basis_reported,
+            adjustment_code="W" if wash_sale_amount else None,
+            adjustment_amount=adjustment_amount,
+            realized_gain_loss=realized_gain_loss,
+            form_8949_box=_form_8949_box(holding_period, basis_reported),
+            raw_trade_line=line,
+        )
+    except Exception as exc:
+        _log.debug("form_1099b_trades: failed to parse trade line %r: %s", line[:120], exc)
         return None
-
-    amounts = _extract_amounts_after_disposition_date(line, date_hits)
-    if len(amounts) < 2:
-        return None
-
-    first_date = _parse_date(date_hits[0].group(0))
-    second_date = _parse_date(date_hits[1].group(0))
-
-    description, security_identifier = _extract_description_and_identifier(line[: date_hits[0].start()])
-
-    proceeds = amounts[0]
-    cost_basis = amounts[1]
-    wash_sale_amount = amounts[2] if len(amounts) >= 3 else 0.0
-    adjustment_amount = -abs(wash_sale_amount) if wash_sale_amount else 0.0
-
-    holding_period = context.holding_period
-    if holding_period == "unknown":
-        holding_period = _derive_holding_period(first_date, second_date)
-
-    basis_reported = context.basis_reported_to_irs
-    realized_gain_loss = (proceeds - cost_basis) + adjustment_amount
-
-    return Brokerage1099Trade(
-        broker_name=broker_name,
-        source_file=source_file,
-        source_sha256=source_sha256,
-        source_page=source_page,
-        description=description,
-        security_identifier=security_identifier,
-        date_acquired=first_date,
-        date_sold_or_disposed=second_date,
-        proceeds_gross=proceeds,
-        cost_basis=cost_basis,
-        wash_sale_code="W" if wash_sale_amount else None,
-        wash_sale_amount=wash_sale_amount,
-        federal_income_tax_withheld=0.0,
-        holding_period=holding_period,
-        basis_reported_to_irs=basis_reported,
-        adjustment_code="W" if wash_sale_amount else None,
-        adjustment_amount=adjustment_amount,
-        realized_gain_loss=realized_gain_loss,
-        form_8949_box=_form_8949_box(holding_period, basis_reported),
-        raw_trade_line=line,
-    )
 
 
 def parse_1099b_trades_text(
@@ -158,7 +176,7 @@ def parse_1099b_trades_text(
     broker_name: Optional[str],
     source_file: str,
     source_sha256: str,
-) -> List[Brokerage1099Trade]:
+) -> Tuple[List[Brokerage1099Trade], ParseDiagnostics]:
     normalized = normalize_extracted_text(text)
     rows = [r.strip() for r in normalized.splitlines() if r.strip()]
     context = SectionContext()
@@ -184,7 +202,7 @@ def parse_1099b_trades_text(
             diagnostics.parsed_rows += 1
             trades.append(trade)
 
-    return trades
+    return trades, diagnostics
 
 
 def trade_to_tax_row(client_id: str, tax_year: int, t: Brokerage1099Trade) -> Dict[str, object]:

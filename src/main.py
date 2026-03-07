@@ -75,6 +75,8 @@ def _write_1099b_trade_outputs(client_dir: Path, out_dir: Path, config: AppConfi
 
     exceptions = build_trade_exceptions(extraction.brokerage_1099_trades, reconciliation)
 
+    if not tax_rows:
+        return
     tax_fields = list(tax_rows[0].keys())
     with (out_dir / "1099b_trades_tax.csv").open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=tax_fields)
@@ -85,6 +87,8 @@ def _write_1099b_trade_outputs(client_dir: Path, out_dir: Path, config: AppConfi
         for row in tax_rows:
             f.write(json.dumps(row, sort_keys=True) + "\n")
 
+    if not analytics_rows:
+        return
     analytics_fields = list(analytics_rows[0].keys())
     with (out_dir / "1099b_trades_analytics.csv").open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=analytics_fields)
@@ -138,10 +142,11 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
             elif doc_type == "brokerage_1099":
                 parsed = parse_brokerage_1099_text(text)
                 extraction.brokerage_1099.append(parsed)
-                trades = parse_1099b_trades_text(text, parsed.broker_name, path.name, row["sha256"])
+                trades, trade_diag = parse_1099b_trades_text(text, parsed.broker_name, path.name, row["sha256"])
                 extraction.brokerage_1099_trades.extend(trades)
                 key_fields = asdict(parsed)
                 key_fields["trade_count"] = len(trades)
+                key_fields["trade_candidates"] = trade_diag.row_candidates
                 issuer = parsed.broker_name
             elif doc_type == "form_1098":
                 parsed = parse_1098_text(text)

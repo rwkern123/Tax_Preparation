@@ -33,7 +33,7 @@ def parse_1098_text(text: str) -> Form1098Data:
     data.mortgage_interest_received = _money(r"(?:1\.?\s*Mortgage\s+interest\s+received|Mortgage\s+interest\s+received)", text)
     data.points_paid = _money(r"(?:6\.?\s*Points\s+paid\s+on\s+purchase\s+of\s+principal\s+residence|Points\s+paid)", text)
     data.mortgage_insurance_premiums = _money(r"(?:5\.?\s*Mortgage\s+insurance\s+premiums|Mortgage\s+insurance\s+premiums)", text)
-    data.real_estate_taxes = _money(r"(?:10\.?\s*Other|Real\s+estate\s+taxes)", text)
+    data.real_estate_taxes = _money(r"(?:10\.?\s*(?:Real\s+estate\s+taxes|Other\s+[\u2014\-]?\s*Real\s+estate)|Real\s+estate\s+taxes)", text)
     data.mortgage_principal_outstanding = _money(r"(?:2\.?\s*Outstanding\s+mortgage\s+principal|Outstanding\s+mortgage\s+principal)", text)
 
     populated = sum(
@@ -41,13 +41,14 @@ def parse_1098_text(text: str) -> Form1098Data:
         for value in [
             data.lender_name,
             data.payer_name,
+            data.borrower_names or None,
             data.mortgage_interest_received,
             data.points_paid,
             data.mortgage_insurance_premiums,
             data.real_estate_taxes,
             data.mortgage_principal_outstanding,
         ]
-        if value not in (None, "")
+        if value not in (None, "", [])
     )
-    data.confidence = round(min(1.0, populated / 7 + 0.15), 2)
+    data.confidence = round(min(1.0, populated / 8), 2)
     return data

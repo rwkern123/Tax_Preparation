@@ -23,8 +23,9 @@ def parse_brokerage_1099_text(text: str) -> Brokerage1099Data:
     if broker_match:
         data.broker_name = broker_match.group(1).strip()[:120]
 
-    data.div_ordinary = _money(r"ordinary\s+dividends", text)
-    data.div_qualified = _money(r"qualified\s+dividends", text)
+    # OCR-tolerant patterns: Tesseract commonly misreads 'i' as 'l' or '1' in IRS form fonts.
+    data.div_ordinary = _money(r"ord[il1]nary\s+div[il1]dends", text)
+    data.div_qualified = _money(r"qual[il1]f[il1]ed\s+div[il1]dends", text)
     data.div_cap_gain_distributions = _money(r"capital\s+gain\s+distributions", text)
     data.div_foreign_tax_paid = _money(r"foreign\s+tax\s+paid", text)
 
@@ -41,18 +42,15 @@ def parse_brokerage_1099_text(text: str) -> Brokerage1099Data:
     for key, pattern in summary_labels.items():
         data.b_summary[key] = _money(pattern, text)
 
-    populated = sum(
-        1
-        for v in [
-            data.div_ordinary,
-            data.div_qualified,
-            data.div_cap_gain_distributions,
-            data.div_foreign_tax_paid,
-            data.int_interest_income,
-            data.int_us_treasury,
-            *data.b_summary.values(),
-        ]
-        if v is not None
-    )
-    data.confidence = round(min(1.0, populated / 9 + 0.15), 2)
+    checkable_values = [
+        data.div_ordinary,
+        data.div_qualified,
+        data.div_cap_gain_distributions,
+        data.div_foreign_tax_paid,
+        data.int_interest_income,
+        data.int_us_treasury,
+        *data.b_summary.values(),
+    ]
+    populated = sum(1 for v in checkable_values if v is not None)
+    data.confidence = round(min(1.0, populated / len(checkable_values)), 2)
     return data

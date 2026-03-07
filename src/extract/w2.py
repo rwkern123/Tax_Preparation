@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import logging
 import re
 
 from src.extract.text_utils import extract_amount_after_label, normalize_extracted_text, parse_amount_token
 from src.models import W2Data
+
+_log = logging.getLogger(__name__)
+
+_NON_NEGATIVE_FIELDS = [
+    "box1_wages", "box2_fed_withholding", "box3_ss_wages",
+    "box4_ss_tax", "box5_medicare_wages", "box6_medicare_tax",
+    "box16_state_wages", "box17_state_tax",
+]
 
 
 def parse_w2_text(text: str) -> W2Data:
@@ -39,6 +48,13 @@ def parse_w2_text(text: str) -> W2Data:
     states = re.findall(r"\b([A-Z]{2})\b", text)
     data.states = sorted({s for s in states if s in {"AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","IA","ID","IL","IN","KS","KY","LA","MA","MD","ME","MI","MN","MO","MS","MT","NC","ND","NE","NH","NJ","NM","NV","NY","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VA","VT","WA","WI","WV","WY"}})
 
+    # Discard impossible negative dollar values — these are OCR parse errors.
+    for field_name in _NON_NEGATIVE_FIELDS:
+        val = getattr(data, field_name)
+        if val is not None and val < 0:
+            _log.warning("w2: negative value %s for %s — discarding (likely parse error)", val, field_name)
+            setattr(data, field_name, None)
+
     populated = sum(
         1
         for v in [
@@ -53,5 +69,7 @@ def parse_w2_text(text: str) -> W2Data:
         ]
         if v not in (None, "")
     )
-    data.confidence = round(min(1.0, populated / 8 + 0.2), 2)
+    # Small bonus when the most critical field (wages) is present; no artificial floor.
+    critical_bonus = 0.1 if data.box1_wages is not None else 0.0
+    data.confidence = round(min(1.0, populated / 8 + critical_bonus), 2)
     return data

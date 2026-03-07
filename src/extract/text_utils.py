@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 
 def normalize_extracted_text(text: str) -> str:
@@ -29,7 +32,7 @@ def parse_amount_token(raw: str) -> Optional[float]:
     token = raw.strip()
     if not token:
         return None
-    is_negative = token.startswith("(") and token.endswith(")") or token.startswith("-")
+    is_negative = (token.startswith("(") and token.endswith(")")) or token.startswith("-")
     cleaned = token.replace("$", "").replace("(", "").replace(")", "").replace(",", "").replace(" ", "")
     try:
         value = float(cleaned)
@@ -39,7 +42,10 @@ def parse_amount_token(raw: str) -> Optional[float]:
 
 
 def extract_amount_after_label(label_pattern: str, text: str) -> Optional[float]:
-    m = re.search(label_pattern + r"[^\d\-\($]{0,30}(\(?-?\$?\s*[\d,]+(?:\.\d{2})?\)?)", text, re.IGNORECASE)
+    # Allow up to 60 chars between label and value to handle wide-column PDF table layouts
+    # (pdfplumber linearizes two-column forms, creating large gaps between label and value).
+    m = re.search(label_pattern + r"[^\d\-\($]{0,60}(\(?-?\$?\s*[\d,]+(?:\.\d{2})?\)?)", text, re.IGNORECASE)
     if not m:
+        _log.debug("extract_amount_after_label: no match for pattern %r in %d chars of text", label_pattern, len(text))
         return None
     return parse_amount_token(m.group(1))

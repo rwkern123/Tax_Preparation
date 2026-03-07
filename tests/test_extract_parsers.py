@@ -225,10 +225,10 @@ class TestParsers(unittest.TestCase):
             "The Companies, Inc. The Companies, Inc.\n"
             "An Affiliate of Inc. An Affiliate Inc.\n"
             "220 Avenue 220 Avenue\n"
-            "I , I , 4\n"
-            "BRITTANY BRITTANY\n"
-            "6 Ln 6 Ln\n"
-            "H , , TX\n"
+            "Indianapolis, IN 46204 Indianapolis, IN 46204\n"
+            "BRITTANY T WEBB BRITTANY T WEBB\n"
+            "6311 Woodbrook Ln 6311 Woodbrook Ln\n"
+            "Houston, TX 77008 Houston, TX 77008\n"
             "D 4686.12 D 4686.12\n"
             "DD 9664.46 DD 9664.46\n"
             "X X\n"
@@ -239,6 +239,7 @@ class TestParsers(unittest.TestCase):
         # EIN is redacted (only "35-" visible); parser correctly finds nothing
         self.assertIsNone(data.employer_ein)
         self.assertEqual(data.employer_name, "The Companies, Inc.")
+        self.assertEqual(data.employee_name, "BRITTANY T WEBB")
         self.assertEqual(data.box1_wages, 68357.36)
         self.assertEqual(data.box2_fed_withholding, 6879.62)
         self.assertEqual(data.box3_ss_wages, 73043.48)

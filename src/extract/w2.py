@@ -302,10 +302,20 @@ def _extract_employee_name(text: str) -> str | None:
         name_raw = re.sub(r"\b\d{5}(?:-\d{4})?\b", "", name_raw)
         return re.sub(r"\s{2,}", " ", name_raw).strip()[:80] or None
 
-    # Positional: "FirstName [Initial] LastName\n<digit>" (address follows name).
-    # Handles both mixed-case ("Ryan W Keel") and all-caps ("BRITTANY T WEBB").
+    # Positional (doubled copy): real W2 PDFs render two side-by-side copies, so the
+    # name line looks like "BRITTANY T WEBB BRITTANY T WEBB\n6311 ...".
+    # Use a backreference to capture the first copy only.
     pm = re.search(
-        r"\n([A-Z][A-Za-z]+(?:[ \t]+[A-Z][ \t]+)?[A-Z][A-Za-z]+)\n\d",
+        r"\n([A-Z][A-Za-z]+[ \t]+(?:[A-Z]\.?[ \t]+)?[A-Z][A-Za-z]+)[ \t]+\1\n\d",
+        text,
+    )
+    if pm:
+        return pm.group(1).strip()[:80]
+
+    # Positional (single copy): "FirstName [Initial] LastName\n<digit>".
+    # Handles mixed-case ("Ryan W Keel") and all-caps ("BRITTANY T WEBB").
+    pm = re.search(
+        r"\n([A-Z][A-Za-z]+[ \t]+(?:[A-Z]\.?[ \t]+)?[A-Z][A-Za-z]+)\n\d",
         text,
     )
     if pm:

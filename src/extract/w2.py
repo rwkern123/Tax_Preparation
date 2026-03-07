@@ -313,14 +313,54 @@ def _extract_employee_name(text: str) -> str | None:
     return None
 
 
+def _extract_year(text: str) -> int | None:
+    """Extract the tax year from W2 text using a priority-based strategy.
+
+    A valid tax-year token is NOT preceded by / $ ( or a digit, and NOT
+    followed by . or a digit (ruling out date strings and decimal amounts).
+
+    Priority:
+    1. "Form W-2 Wage and Tax Statement <year>" — canonical form footer/header.
+    2. Year adjacent to any "W-2" label        — shorter label variants.
+    3. Standalone year on its own line          — Dayforce / real-PDF layout.
+    4. First clean year token in the text       — last resort.
+    """
+    _YEAR = r"(?<![/$(\d])(20\d{2})(?![.\d])"
+
+    # 1. Full form title (year appears to the right on the same line).
+    m = re.search(
+        r"Form\s+W-?\s*2\s+Wage\s+and\s+Tax\s+Statement[^\n]{0,40}" + _YEAR,
+        text, re.IGNORECASE,
+    )
+    if m:
+        return int(m.group(1))
+
+    # 2. Shorter "W-2" / "W2" label with year nearby (either side, same line).
+    m = re.search(r"W-?\s*2\b[^\n]{0,40}" + _YEAR, text, re.IGNORECASE)
+    if not m:
+        m = re.search(_YEAR + r"[^\n]{0,40}\bW-?\s*2\b", text, re.IGNORECASE)
+    if m:
+        return int(m.group(1))
+
+    # 3. Standalone year on its own line (Dayforce prints "2024" alone).
+    m = re.search(r"(?m)^\s*(20\d{2})\s*$", text)
+    if m:
+        return int(m.group(1))
+
+    # 4. First clean year token anywhere in the text.
+    m = re.search(_YEAR, text)
+    if m:
+        return int(m.group(1))
+
+    return None
+
+
 def parse_w2_text(text: str) -> W2Data:
     data = W2Data()
     text = normalize_extracted_text(text)
 
     # --- Year ---
-    year_match = re.search(r"\b(20\d{2})\b", text)
-    if year_match:
-        data.year = int(year_match.group(1))
+    data.year = _extract_year(text)
 
     # --- EIN ---
     ein_match = re.search(r"\b(\d{2}-\d{7})\b", text)

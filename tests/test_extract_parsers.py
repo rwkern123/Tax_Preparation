@@ -163,6 +163,92 @@ class TestParsers(unittest.TestCase):
         data = parse_w2_text(text)
         self.assertFalse(data.box13_retirement_plan)
 
+    def test_parse_w2_dayforce_real_pdf(self):
+        """Dayforce W2: actual pdfplumber text — no box labels, W-2 Wages summary line,
+        garbled first copy, clean employee name in final copy."""
+        text = (
+            "4/11/25, 10:51 PM Earnings - Dayforce\n"
+            "Federal Box 1 Soc. Sec. Box 3 & 7 Medicare Box 5\n"
+            "To the right is information which shows your total wages by"
+            " Gross Wages 187199.96 187199.96 187199.96\n"
+            "W-2 box and the amount of any deferred compensation and/or"
+            " Txbl Benefits 1475.00 1475.00 1475.00\n"
+            "W-2 Wages 176008.96 168600.00 186640.96\n"
+            "XXX-XX-1234 92-1234567 17123456\n"
+            "176008.96 33321.86\n"
+            "Cool Company LLP\n"
+            "1234 Smith Blvd\n"
+            "Tampa FL 33607 168600.00 10453.20\n"
+            "186640.96 2706.29\n"
+            "1\nJo\n2\nh\n3\nn\n4\nW\nWoodrow Ln\nKeel\nDallasTX 77512\nUSA\n"
+            "D 10632.00\n"
+            "W 1419.84\n"
+            "X\n"
+            "DD 6618.00\n"
+            "2024\n"
+            "Tampa FL 33607 168600.00 10453.20\n"
+            "186640.96 2706.29\n"
+            "Ryan W Keel\n"
+            "1234Woodrow Ln\n"
+            "Dallas TX 77512\n"
+            "USA\n"
+            "D 10632.00\n"
+            "W 1419.84\n"
+            "X\n"
+            "DD 6618.00\n"
+            "2024\n"
+        )
+        data = parse_w2_text(text)
+        self.assertEqual(data.year, 2024)
+        self.assertEqual(data.employer_ein, "92-1234567")
+        self.assertEqual(data.employer_name, "Cool Company LLP")
+        self.assertEqual(data.employee_name, "Ryan W Keel")
+        self.assertEqual(data.box1_wages, 176008.96)
+        self.assertEqual(data.box2_fed_withholding, 33321.86)
+        self.assertEqual(data.box3_ss_wages, 168600.00)
+        self.assertEqual(data.box4_ss_tax, 10453.20)
+        self.assertEqual(data.box5_medicare_wages, 186640.96)
+        self.assertEqual(data.box6_medicare_tax, 2706.29)
+        self.assertEqual(data.box12.get("D"), 10632.00)
+        self.assertEqual(data.box12.get("W"), 1419.84)
+        self.assertEqual(data.box12.get("DD"), 6618.00)
+        self.assertTrue(data.box13_retirement_plan)
+
+    def test_parse_w2_webb_real_pdf(self):
+        """WEBB W2: actual pdfplumber text — no labels, doubled side-by-side copies,
+        partial EIN, no year in extracted text."""
+        text = (
+            "68357.36 6879.62 68357.36 6879.62\n"
+            "73043.48 4528.70 73043.48 4528.70\n"
+            "35- 35-\n"
+            "73043.48 1059.13 73043.48 1059.13\n"
+            "The Companies, Inc. The Companies, Inc.\n"
+            "An Affiliate of Inc. An Affiliate Inc.\n"
+            "220 Avenue 220 Avenue\n"
+            "I , I , 4\n"
+            "BRITTANY BRITTANY\n"
+            "6 Ln 6 Ln\n"
+            "H , , TX\n"
+            "D 4686.12 D 4686.12\n"
+            "DD 9664.46 DD 9664.46\n"
+            "X X\n"
+        )
+        data = parse_w2_text(text)
+        # No year in pdfplumber output for this form
+        self.assertIsNone(data.year)
+        # EIN is redacted (only "35-" visible); parser correctly finds nothing
+        self.assertIsNone(data.employer_ein)
+        self.assertEqual(data.employer_name, "The Companies, Inc.")
+        self.assertEqual(data.box1_wages, 68357.36)
+        self.assertEqual(data.box2_fed_withholding, 6879.62)
+        self.assertEqual(data.box3_ss_wages, 73043.48)
+        self.assertEqual(data.box4_ss_tax, 4528.70)
+        self.assertEqual(data.box5_medicare_wages, 73043.48)
+        self.assertEqual(data.box6_medicare_tax, 1059.13)
+        self.assertEqual(data.box12.get("D"), 4686.12)
+        self.assertEqual(data.box12.get("DD"), 9664.46)
+        self.assertTrue(data.box13_retirement_plan)
+
     def test_parse_1098_parentheses_amount(self):
         text = """
         Form 1098 2024

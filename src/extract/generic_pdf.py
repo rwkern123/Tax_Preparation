@@ -41,6 +41,67 @@ def extract_pdf_text(path: Path) -> tuple[str, list[str]]:
             return "", notes
 
 
+def _configure_tesseract(pytesseract: object) -> None:
+    """Set tesseract_cmd to the Windows default install path when not in PATH."""
+    import os
+    import sys
+
+    if sys.platform != "win32":
+        return
+    # Honour an explicit override first.
+    override = os.environ.get("TESSERACT_CMD")
+    if override:
+        pytesseract.pytesseract.tesseract_cmd = override  # type: ignore[attr-defined]
+        return
+    for candidate in (
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    ):
+        if Path(candidate).exists():
+            pytesseract.pytesseract.tesseract_cmd = candidate  # type: ignore[attr-defined]
+            return
+
+
+def _pdf_pages_to_images(path: Path, notes: list[str]) -> list:
+    """Return a list of PIL Images (one per page) from a PDF.
+
+    Tries pypdfium2 first (no external binary required), then falls back to
+    pdf2image (requires Poppler).  300 DPI matches Tesseract's recommended
+    minimum for printed text.
+    """
+    from PIL import Image  # type: ignore  # noqa: F401 — ensure PIL available
+
+    # --- pypdfium2 (preferred: pure-Python, no Poppler dependency) ---
+    try:
+        import pypdfium2  # type: ignore
+
+        doc = pypdfium2.PdfDocument(str(path))
+        images = []
+        for page in doc:
+            bitmap = page.render(scale=300 / 72)  # 300 DPI
+            images.append(bitmap.to_pil())
+            page.close()
+        doc.close()
+        notes.append(f"ocr_pdf_page_count:{len(images)}")
+        notes.append("pdf_to_image:pypdfium2")
+        return images
+    except Exception as exc:
+        notes.append(f"pypdfium2_error:{type(exc).__name__}")
+
+    # --- pdf2image fallback (requires Poppler in PATH) ---
+    try:
+        from pdf2image import convert_from_path  # type: ignore
+
+        pages = convert_from_path(str(path), dpi=300)
+        notes.append(f"ocr_pdf_page_count:{len(pages)}")
+        notes.append("pdf_to_image:pdf2image")
+        return pages
+    except Exception as exc:
+        notes.append(f"ocr_error:pdf:{type(exc).__name__}")
+
+    return []
+
+
 def ocr_image_or_pdf(path: Path) -> tuple[str, list[str]]:
     notes: list[str] = []
     try:
@@ -49,6 +110,8 @@ def ocr_image_or_pdf(path: Path) -> tuple[str, list[str]]:
     except Exception as exc:
         notes.append(f"ocr_unavailable:{type(exc).__name__}")
         return "", notes
+
+    _configure_tesseract(pytesseract)
 
     # OEM 1 = LSTM neural network engine (best for printed tax forms).
     # PSM 6 = assume a single uniform block of text per page; suits form pages.
@@ -67,20 +130,13 @@ def ocr_image_or_pdf(path: Path) -> tuple[str, list[str]]:
             notes.append(f"ocr_error:image:{type(exc).__name__}")
             return "", notes
 
-    try:
-        from pdf2image import convert_from_path  # type: ignore
-
-        # 300 DPI is the minimum recommended for Tesseract on printed text documents.
-        _OCR_DPI = 300
-        pages = convert_from_path(str(path), dpi=_OCR_DPI)
-        notes.append(f"ocr_pdf_page_count:{len(pages)}")
-        text = "\n".join(_ocr_image(p) for p in pages)
-        if text.strip():
-            notes.append("ocr_applied:pdf")
-        return text, notes
-    except Exception as exc:
-        notes.append(f"ocr_error:pdf:{type(exc).__name__}")
+    pages = _pdf_pages_to_images(path, notes)
+    if not pages:
         return "", notes
+    text = "\n".join(_ocr_image(p) for p in pages)
+    if text.strip():
+        notes.append("ocr_applied:pdf")
+    return text, notes
 
 
 def get_document_text(path: Path, enable_ocr: bool) -> tuple[str, list[str]]:

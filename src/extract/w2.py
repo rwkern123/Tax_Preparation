@@ -56,9 +56,12 @@ def _extract_box12(text: str) -> dict[str, float]:
     scope = scope_match.group(1) if scope_match else text
 
     # Pass A — Dayforce inline style: "Code DD  6618.00"
+    # Run on the full text (not just scope) because OCR of image W2s can place
+    # box-12 code/value pairs on the same line as "15 State" headers, pushing
+    # them outside the scope boundary.
     for m in re.finditer(
         r"\bCode\s+([A-Z]{1,2})\s+(\(?-?\$?[\d,]+(?:\.\d{2})?\)?)",
-        scope, re.IGNORECASE,
+        text, re.IGNORECASE,
     ):
         code = m.group(1).upper()
         val = parse_amount_token(m.group(2))
@@ -161,12 +164,16 @@ def _fill_boxes_positional(data: W2Data, text: str) -> None:
         text,
     )
     if ww:
-        if data.box1_wages is None:
-            data.box1_wages = parse_amount_token(ww.group(1))
-        if data.box3_ss_wages is None:
-            data.box3_ss_wages = parse_amount_token(ww.group(2))
-        if data.box5_medicare_wages is None:
-            data.box5_medicare_wages = parse_amount_token(ww.group(3))
+        # Always trust the Dayforce summary line — it overrides any label-based
+        # extraction that may have picked up wrong values when OCR flattens the
+        # two-column form (box-number digits get matched instead of real amounts).
+        # Also reset the paired even-boxes so rate-based detection re-fills them.
+        data.box1_wages = parse_amount_token(ww.group(1))
+        data.box3_ss_wages = parse_amount_token(ww.group(2))
+        data.box5_medicare_wages = parse_amount_token(ww.group(3))
+        data.box2_fed_withholding = None
+        data.box4_ss_tax = None
+        data.box6_medicare_tax = None
 
     # --- Collect all unique {amount} {amount} pairs (same line only) ---
     all_pairs: list[tuple[float, float]] = []
@@ -289,7 +296,13 @@ def _street_before(lines: list[str], csz_idx: int) -> str | None:
     for j in range(csz_idx - 1, max(csz_idx - 4, -1), -1):
         candidate = _dedupe_doubled(lines[j]).strip()
         if candidate and re.match(r"^\d", candidate) and not re.search(r"\.\d{2}", candidate):
-            return candidate
+            # OCR of image W2s concatenates adjacent-column box labels onto the
+            # same line as the street address.  Trim at the first W2 box keyword.
+            candidate = re.split(
+                r'\s+\d+\s+(?:Social|Medicare|Federal|Wages|State|Employer)',
+                candidate,
+            )[0].strip()
+            return candidate or None
     return None
 
 
@@ -414,7 +427,18 @@ def _extract_employer_name(text: str) -> str | None:
             text, re.IGNORECASE,
         )
     if m:
-        return m.group(1).strip()[:120]
+        candidate = m.group(1).strip()
+        # OCR of image W2s (Dayforce) places box-value lines before the employer
+        # name because the two-column layout is flattened left-to-right.  If the
+        # captured line is all amounts/punctuation, scan forward for the real name.
+        if re.match(r'^[\d\s,.()\-]+$', candidate):
+            rest = text[m.end(): m.end() + 300]
+            for ln in rest.split('\n'):
+                ln = ln.strip()
+                if ln and not re.match(r'^[\d\s,.()\-]+$', ln):
+                    candidate = ln
+                    break
+        return candidate[:120]
 
     # Positional: first line with a company suffix after the first dollar amount.
     # [^\n\d]*? ensures no digits appear before the suffix (filters numeric lines).
@@ -574,6 +598,15 @@ def parse_w2_text(text: str, fallback_year: int | None = None) -> W2Data:
         text,
     )
 
+    # Discard negative values from label extraction before the positional fallback
+    # so that OCR artifacts like "-214175.64" (a "-" prefix before a value) turn
+    # into None and correctly trigger the fallback rather than blocking it.
+    for field_name in _NON_NEGATIVE_FIELDS:
+        val = getattr(data, field_name)
+        if val is not None and val < 0:
+            _log.warning("w2: negative value %s for %s — discarding (likely parse error)", val, field_name)
+            setattr(data, field_name, None)
+
     # Positional fallback when any box 1–6 field is still missing.
     if any(v is None for v in [
         data.box1_wages, data.box2_fed_withholding,
@@ -607,13 +640,6 @@ def parse_w2_text(text: str, fallback_year: int | None = None) -> W2Data:
         data.employee_state,
         data.employee_zip,
     ) = _extract_employee_address(text, data.employee_name)
-
-    # --- Discard impossible negative values (OCR parse errors) ---
-    for field_name in _NON_NEGATIVE_FIELDS:
-        val = getattr(data, field_name)
-        if val is not None and val < 0:
-            _log.warning("w2: negative value %s for %s — discarding (likely parse error)", val, field_name)
-            setattr(data, field_name, None)
 
     # --- Confidence scoring (9 key fields) ---
     populated = sum(

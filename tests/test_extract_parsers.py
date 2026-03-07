@@ -9,20 +9,32 @@ class TestParsers(unittest.TestCase):
     def test_parse_w2(self):
         text = """
         Form W-2 2024
-        Employer's name: ABC Corp
+        c Employer's name, address, and ZIP code
+        ABC Corp
+        200 West Street
+        New York, NY 10282
         EIN 12-3456789
+        e Employee's first name
+        John Smith
+        456 Elm Ave
+        Albany, NY 12207
         Box 1 Wages 85,200.00
         Box 2 Federal income tax withheld 12,900.00
         Box 12 D 6,000.00
         Box 16 State wages 85,200.00
         Box 17 State income tax 4,100.00
-        NY
         """
         data = parse_w2_text(text)
         self.assertEqual(data.employer_ein, "12-3456789")
         self.assertEqual(data.box1_wages, 85200.00)
         self.assertIn("D", data.box12)
-        self.assertIn("NY", data.states)
+        self.assertEqual(data.employer_state, "NY")
+        self.assertEqual(data.employer_city, "New York")
+        self.assertEqual(data.employer_zip, "10282")
+        self.assertEqual(data.employer_address, "200 West Street")
+        self.assertEqual(data.employee_state, "NY")
+        self.assertEqual(data.employee_city, "Albany")
+        self.assertEqual(data.employee_zip, "12207")
 
     def test_parse_brokerage(self):
         text = """

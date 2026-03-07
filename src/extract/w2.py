@@ -238,6 +238,161 @@ def _fill_boxes_positional(data: W2Data, text: str) -> None:
                 break
 
 
+def _dedupe_doubled(s: str) -> str:
+    """Remove doubled text (e.g. 'FOO BAR  FOO BAR' → 'FOO BAR').
+
+    Real W2 PDFs render two side-by-side copies so address lines can appear
+    as 'HOUSTON TX 77019 HOUSTON TX 77019'.  We check the two halves
+    (±1 char to handle odd lengths) and return the first half when they match.
+    """
+    s = s.strip()
+    n = len(s)
+    for split in (n // 2 - 1, n // 2, n // 2 + 1):
+        if 0 < split < n:
+            first = s[:split].strip()
+            second = s[split:].strip()
+            if first and first == second:
+                return first
+    return s
+
+
+def _parse_csz(line: str) -> tuple[str | None, str | None, str | None]:
+    """Parse 'City[,] ST 12345[-4]' into (city, state, zip).
+
+    Handles doubled copies produced by two-column W2 PDFs.
+    Returns (None, None, None) if the line doesn't match.
+    """
+    line = _dedupe_doubled(line)
+    m = re.match(
+        r"^([\w][\w\s.\-']*?),?\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$",
+        line,
+    )
+    if m and m.group(2) in _US_STATES:
+        return m.group(1).strip(), m.group(2), m.group(3)
+    return None, None, None
+
+
+def _find_csz(lines: list[str]) -> tuple[int, str | None, str | None, str | None]:
+    """Return (index, city, state, zip) of the first matching CSZ line."""
+    for i, line in enumerate(lines):
+        city, state, zip_ = _parse_csz(line)
+        if state:
+            return i, city, state, zip_
+    return -1, None, None, None
+
+
+def _street_before(lines: list[str], csz_idx: int) -> str | None:
+    """Return the street line that precedes a CSZ line, if it looks like one."""
+    for j in range(csz_idx - 1, max(csz_idx - 4, -1), -1):
+        candidate = _dedupe_doubled(lines[j]).strip()
+        if candidate and re.match(r"^\d", candidate) and not re.search(r"\.\d{2}", candidate):
+            return candidate
+    return None
+
+
+def _extract_employer_address(
+    text: str,
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """Extract employer (street, city, state, zip) from W2 text.
+
+    Pass A — Labeled multi-line block: box 'c' header then name / street / CSZ.
+    Pass B — Inline labeled field: 'Employer's address: ...'
+    Pass C — Positional: search the ~300 chars surrounding the EIN.
+    """
+    # Pass A — "c Employer's name, address..." block (labeled/synthetic PDFs)
+    m = re.search(
+        r"(?:c\s+)?Employer(?:'s)?\s+name[,\s][^\n]*\n([^\n]+)\n([^\n]+)\n([^\n]+)",
+        text, re.IGNORECASE,
+    )
+    if m:
+        candidates = [m.group(1).strip(), m.group(2).strip(), m.group(3).strip()]
+        idx, city, state, zip_ = _find_csz(candidates)
+        if state:
+            return _street_before(candidates, idx), city, state, zip_
+
+    # Pass B — Explicit address label
+    addr_m = re.search(
+        r"Employer(?:'s)?\s+(?:address|street)[^\n:]*:\s*(.+)",
+        text, re.IGNORECASE,
+    )
+    if addr_m:
+        street = addr_m.group(1).strip() or None
+        rest_lines = [
+            l.strip()
+            for l in text[addr_m.end(): addr_m.end() + 200].split("\n")
+            if l.strip()
+        ]
+        city, state, zip_ = _parse_csz(rest_lines[0]) if rest_lines else (None, None, None)
+        return street, city, state, zip_
+
+    # Pass C — Positional: use EIN as anchor for the employer block
+    ein_m = re.search(r"\b\d{2}-\d{7}\b", text)
+    if ein_m:
+        scope_start = max(0, ein_m.start() - 400)
+        scope_lines = [
+            l.strip()
+            for l in text[scope_start: ein_m.end() + 100].split("\n")
+            if l.strip()
+        ]
+        idx, city, state, zip_ = _find_csz(scope_lines)
+        if state:
+            return _street_before(scope_lines, idx), city, state, zip_
+
+    return None, None, None, None
+
+
+def _extract_employee_address(
+    text: str,
+    employee_name: str | None,
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """Extract employee (street, city, state, zip) from W2 text.
+
+    Pass A — Labeled field: 'Employee's address: ...'
+    Pass B — Positional: lines immediately after the employee name.
+    Pass C — Pattern: name \\n street \\n CSZ across the whole text.
+    """
+    # Pass A — Explicit label
+    addr_m = re.search(
+        r"Employee(?:'s)?\s+(?:address|street)[^\n:]*:\s*(.+)",
+        text, re.IGNORECASE,
+    )
+    if addr_m:
+        street = addr_m.group(1).strip() or None
+        rest_lines = [
+            l.strip()
+            for l in text[addr_m.end(): addr_m.end() + 200].split("\n")
+            if l.strip()
+        ]
+        city, state, zip_ = _parse_csz(rest_lines[0]) if rest_lines else (None, None, None)
+        return street, city, state, zip_
+
+    # Pass B — Positional: search after employee name
+    if employee_name:
+        name_m = re.search(re.escape(employee_name.strip()), text, re.IGNORECASE)
+        if name_m:
+            lines = [
+                l.strip()
+                for l in text[name_m.end(): name_m.end() + 400].split("\n")
+                if l.strip()
+            ]
+            idx, city, state, zip_ = _find_csz(lines)
+            if state:
+                return _street_before(lines, idx), city, state, zip_
+
+    # Pass C — Pattern: name immediately followed by street then CSZ
+    pm = re.search(
+        r"\n[A-Z][A-Za-z]+(?:[ \t]+[A-Z]\.?)?[ \t]+[A-Z][A-Za-z]+"
+        r"\n(\d[^\n]*)\n([\w][\w\s.\-']*,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)",
+        text,
+    )
+    if pm:
+        city, state, zip_ = _parse_csz(pm.group(2))
+        if state:
+            return _dedupe_doubled(pm.group(1)).strip(), city, state, zip_
+
+    return None, None, None, None
+
+
 def _extract_employer_name(text: str) -> str | None:
     """Extract employer name from W2 text.
 
@@ -434,8 +589,21 @@ def parse_w2_text(text: str, fallback_year: int | None = None) -> W2Data:
     data.box16_state_wages = extract_amount_after_label(r"(?:Box\s*16|16\.?\s*State\s*wages)", text)
     data.box17_state_tax = extract_amount_after_label(r"(?:Box\s*17|17\.?\s*State\s*income\s*tax)", text)
 
-    # --- State abbreviations ---
-    data.states = sorted({s for s in re.findall(r"\b([A-Z]{2})\b", text) if s in _US_STATES})
+    # --- Employer address ---
+    (
+        data.employer_address,
+        data.employer_city,
+        data.employer_state,
+        data.employer_zip,
+    ) = _extract_employer_address(text)
+
+    # --- Employee address ---
+    (
+        data.employee_address,
+        data.employee_city,
+        data.employee_state,
+        data.employee_zip,
+    ) = _extract_employee_address(text, data.employee_name)
 
     # --- Discard impossible negative values (OCR parse errors) ---
     for field_name in _NON_NEGATIVE_FIELDS:

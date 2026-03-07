@@ -34,8 +34,14 @@ class W2Data:
     box13_retirement_plan: bool = False
     box16_state_wages: Optional[float] = None
     box17_state_tax: Optional[float] = None
-    states: List[str] = field(default_factory=list)
-    localities: List[str] = field(default_factory=list)
+    employer_address: Optional[str] = None
+    employer_city: Optional[str] = None
+    employer_state: Optional[str] = None
+    employer_zip: Optional[str] = None
+    employee_address: Optional[str] = None
+    employee_city: Optional[str] = None
+    employee_state: Optional[str] = None
+    employee_zip: Optional[str] = None
     confidence: float = 0.0
 
 

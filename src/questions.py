@@ -23,7 +23,11 @@ def generate_questions(client: str, data: ExtractionResult) -> str:
         q.append("- Brokerage statements were detected but no trade-level 1099-B rows were parsed. Please provide clearer copies or CSV exports from your broker.")
 
     for w in data.w2:
-        if len(w.states) > 1:
+        if (
+            w.employer_state
+            and w.employee_state
+            and w.employer_state != w.employee_state
+        ):
             q.append("- Multiple states appear on W-2. Please confirm resident/nonresident status and move dates.")
         if "D" in w.box12:
             q.append("- Box 12 code D detected. Confirm retirement plan contribution details.")

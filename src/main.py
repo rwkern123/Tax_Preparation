@@ -135,7 +135,7 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
             key_fields = {}
             issuer = None
             if doc_type == "w2":
-                parsed = parse_w2_text(text)
+                parsed = parse_w2_text(text, fallback_year=config.tax_year)
                 extraction.w2.append(parsed)
                 key_fields = asdict(parsed)
                 issuer = parsed.employer_name

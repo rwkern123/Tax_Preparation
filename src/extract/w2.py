@@ -302,9 +302,10 @@ def _extract_employee_name(text: str) -> str | None:
         name_raw = re.sub(r"\b\d{5}(?:-\d{4})?\b", "", name_raw)
         return re.sub(r"\s{2,}", " ", name_raw).strip()[:80] or None
 
-    # Positional: "FirstName [Initial] LastName\n<digit>" (address follows name)
+    # Positional: "FirstName [Initial] LastName\n<digit>" (address follows name).
+    # Handles both mixed-case ("Ryan W Keel") and all-caps ("BRITTANY T WEBB").
     pm = re.search(
-        r"\n([A-Z][a-z]+(?:[ \t]+[A-Z][ \t]+)?[A-Z][a-z]+)\n\d",
+        r"\n([A-Z][A-Za-z]+(?:[ \t]+[A-Z][ \t]+)?[A-Z][A-Za-z]+)\n\d",
         text,
     )
     if pm:
@@ -355,12 +356,14 @@ def _extract_year(text: str) -> int | None:
     return None
 
 
-def parse_w2_text(text: str) -> W2Data:
+def parse_w2_text(text: str, fallback_year: int | None = None) -> W2Data:
     data = W2Data()
     text = normalize_extracted_text(text)
 
     # --- Year ---
     data.year = _extract_year(text)
+    if data.year is None and fallback_year is not None:
+        data.year = fallback_year
 
     # --- EIN ---
     ein_match = re.search(r"\b(\d{2}-\d{7})\b", text)

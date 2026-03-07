@@ -249,6 +249,39 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(data.box12.get("DD"), 9664.46)
         self.assertTrue(data.box13_retirement_plan)
 
+    def test_parse_w2_employee_name_allcaps(self):
+        """All-caps employee name (e.g. WEBB PDF) is extracted by positional pattern."""
+        text = (
+            "034-80-5887 68357.36 6879.62\n"
+            "35-1835818\n"
+            "73043.48 4528.70\n"
+            "73043.48 1059.13\n"
+            "The Elevance Health Companies, Inc.\n"
+            "An Affiliate of Elevance Health, Inc.\n"
+            "220 Virginia Avenue\n"
+            "Indianapolis, IN 46204\n"
+            "BRITTANY T WEBB\n"
+            "6311 Woodbrook Ln\n"
+            "Houston, TX 77008\n"
+            "D 4686.12\n"
+            "DD 9664.46\n"
+            "X\n"
+        )
+        data = parse_w2_text(text)
+        self.assertEqual(data.employee_name, "BRITTANY T WEBB")
+
+    def test_parse_w2_fallback_year(self):
+        """fallback_year is used when no year can be extracted from text."""
+        text = (
+            "35-1835818\n"
+            "68357.36 6879.62\n"
+            "73043.48 4528.70\n"
+            "73043.48 1059.13\n"
+            "The Elevance Health Companies, Inc.\n"
+        )
+        data = parse_w2_text(text, fallback_year=2024)
+        self.assertEqual(data.year, 2024)
+
     def test_parse_1098_parentheses_amount(self):
         text = """
         Form 1098 2024

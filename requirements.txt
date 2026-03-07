@@ -1,0 +1,14 @@
+# Core PDF extraction
+pdfplumber
+pypdf
+
+# OCR (optional — requires Tesseract and Poppler installed on the system)
+pytesseract
+pdf2image
+Pillow
+
+# Web UI
+flask
+
+# Testing
+pytest

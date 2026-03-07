@@ -275,7 +275,10 @@ def _parse_csz(line: str) -> tuple[str | None, str | None, str | None]:
 def _find_csz(lines: list[str]) -> tuple[int, str | None, str | None, str | None]:
     """Return (index, city, state, zip) of the first matching CSZ line."""
     for i, line in enumerate(lines):
-        city, state, zip_ = _parse_csz(line)
+        # Strip trailing amount data before parsing (e.g. Dayforce puts amounts
+        # on the same line as the CSZ: "Tampa FL 33607 168600.00 10453.20").
+        clean = re.sub(r"(?:\s+\d[\d,]*\.\d{2})+\s*$", "", line).strip()
+        city, state, zip_ = _parse_csz(clean)
         if state:
             return i, city, state, zip_
     return -1, None, None, None
@@ -331,7 +334,7 @@ def _extract_employer_address(
         scope_start = max(0, ein_m.start() - 400)
         scope_lines = [
             l.strip()
-            for l in text[scope_start: ein_m.end() + 100].split("\n")
+            for l in text[scope_start: ein_m.end() + 600].split("\n")
             if l.strip()
         ]
         idx, city, state, zip_ = _find_csz(scope_lines)

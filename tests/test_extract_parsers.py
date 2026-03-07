@@ -72,6 +72,97 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(data.box2_fed_withholding, 12900.00)
         self.assertEqual(data.box12.get("D"), -6000.00)
 
+    def test_parse_w2_box12_dayforce_style(self):
+        """Dayforce layout: 'Code DD 6618.00' inline — multi-letter codes."""
+        text = """
+        Form W-2 2024
+        EIN 92-1234567
+        1 Wages, tips, other compensation 176008.96
+        2 Federal income tax withheld 33321.86
+        12a See instructions for box 12 12b
+        Code D 10632.00 Code W 1419.84
+        12c 12d
+        Code DD 6618.00 Code
+        14 Other
+        """
+        data = parse_w2_text(text)
+        self.assertEqual(data.box12.get("D"), 10632.00)
+        self.assertEqual(data.box12.get("W"), 1419.84)
+        self.assertEqual(data.box12.get("DD"), 6618.00)
+
+    def test_parse_w2_box12_webb_style(self):
+        """WEBB layout: code letter on its own line after '12x Code' sub-label."""
+        text = """
+        Form W-2 2024
+        EIN 35-1234567
+        1 Wages, tips, other comp. 68357.36
+        2 Federal income tax withheld 6879.62
+        12a Code See inst. for box 12
+        D 4686.12
+        12b Code
+        DD 9664.46
+        12c Code
+        14 Other
+        """
+        data = parse_w2_text(text)
+        self.assertEqual(data.box12.get("D"), 4686.12)
+        self.assertEqual(data.box12.get("DD"), 9664.46)
+
+    def test_parse_w2_employee_name_multiline(self):
+        """Employee name is on the line after the 'e Employee's...' label."""
+        text = """
+        Form W-2 2024
+        EIN 92-1234567
+        e Employee's first name and initial  Last name  Suff.
+        John W  Keel
+        1234 Woodrow Ln
+        Dallas TX 77512
+        1 Wages, tips, other compensation 176008.96
+        """
+        data = parse_w2_text(text)
+        self.assertEqual(data.employee_name, "John W Keel")
+
+    def test_parse_w2_employer_name_multiline(self):
+        """Employer name is on the line after 'c Employer's name...' label."""
+        text = """
+        Form W-2 2024
+        c Employer's name, address, and ZIP code
+        Cool Company LLP
+        1234 Smith Blvd
+        Tampa FL 33607
+        EIN 92-1234567
+        1 Wages, tips, other compensation 176008.96
+        """
+        data = parse_w2_text(text)
+        self.assertEqual(data.employer_name, "Cool Company LLP")
+
+    def test_parse_w2_box13_retirement_plan(self):
+        """Box 13 retirement plan checkbox is detected."""
+        text = """
+        Form W-2 2024
+        EIN 92-1234567
+        1 Wages, tips, other compensation 176008.96
+        13 Statutory Retirement Third-party
+        employee plan sick Pay
+        X
+        14 Other
+        """
+        data = parse_w2_text(text)
+        self.assertTrue(data.box13_retirement_plan)
+
+    def test_parse_w2_box13_retirement_plan_not_checked(self):
+        """Box 13 retirement plan is False when not checked."""
+        text = """
+        Form W-2 2024
+        EIN 92-1234567
+        1 Wages, tips, other compensation 50000.00
+        13 Statutory Retirement Third-party
+        employee plan sick Pay
+        14 Other
+        """
+        data = parse_w2_text(text)
+        self.assertFalse(data.box13_retirement_plan)
+
     def test_parse_1098_parentheses_amount(self):
         text = """
         Form 1098 2024

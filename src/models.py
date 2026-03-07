@@ -31,6 +31,7 @@ class W2Data:
     box5_medicare_wages: Optional[float] = None
     box6_medicare_tax: Optional[float] = None
     box12: Dict[str, float] = field(default_factory=dict)
+    box13_retirement_plan: bool = False
     box16_state_wages: Optional[float] = None
     box17_state_tax: Optional[float] = None
     states: List[str] = field(default_factory=list)

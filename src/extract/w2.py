@@ -23,9 +23,8 @@ _US_STATES = {
 
 # Valid IRS box-12 codes — restricts bare-code extraction to avoid false positives.
 _BOX12_CODES = frozenset({
-    "A","B","C","D","E","EE","F","G","H","HH",
-    "J","K","L","M","N","P","Q","R","S","T","V","W","Y","Z",
-    "AA","BB","CC","DD",
+    "A","B","C","D","E","F","G","H","J","K","L","M","N","P","Q","R","S","T","V","W","Y","Z",
+    "AA","BB","CC","DD","EE","FF","GG","HH",
 })
 
 # SS and Medicare withholding rates used for positional box identification.
@@ -69,8 +68,10 @@ def _extract_box12(text: str) -> dict[str, float]:
             result[code] = val
 
     # Pass B — WEBB labeled style: "12x Code [optional text]\n DD  9664.46"
+    # Optional single-char noise group handles PDF vertical-bar artifacts like
+    # "W | 500.00" (column separator read as "|") from pdfplumber.
     for m in re.finditer(
-        r"12[a-d]\s+(?:Code|See\s+inst[^\n]*)[\s]*\n\s*([A-Z]{1,2})\s+(\(?-?\$?[\d,]+(?:\.\d{2})?\)?)",
+        r"12[a-d]\s+(?:Code|See\s+inst[^\n]*)[\s]*\n\s*([A-Z]{1,2})(?:[ \t]+[|/\\][ \t]+)?[ \t]+(\(?-?\$?[\d,]+(?:\.\d{2})?\)?)",
         scope, re.IGNORECASE,
     ):
         code = m.group(1).upper()
@@ -90,9 +91,41 @@ def _extract_box12(text: str) -> dict[str, float]:
 
     # Pass D — real PDF bare style: "D 4686.12" or "DD 9664.46" at the start of
     # a line (no "Code" or "12x" prefix).  Only fires for known IRS box-12 codes.
+    # Handles optional "$" prefix (e.g. IDMS payroll: "S $17,575.00").
     for m in re.finditer(
-        r"(?m)^[ \t]*([A-Z]{1,2})[ \t]+(\d[\d,]*\.\d{2})",
+        r"(?m)^[ \t]*([A-Z]{1,2})[ \t]+\$?(\d[\d,]*\.\d{2})",
         scope,
+    ):
+        code = m.group(1).upper()
+        if code not in _BOX12_CODES:
+            continue
+        val = parse_amount_token(m.group(2))
+        if val is not None and code not in result:
+            result[code] = val
+
+    # Pass E — same-line generic: "12x [any label] CODE $amount" on one line.
+    # Handles IDMS style ("12a - Depress F1 for codes S $17,575.00") and ADP
+    # same-line variants.  Greedy [^\n]* means the LAST standalone code token
+    # before an amount is captured (backtracking finds the rightmost match).
+    # _BOX12_CODES allowlist prevents false positives from label words.
+    for m in re.finditer(
+        r"(?m)^[ \t]*12[a-d]\b[^\n]* \b([A-Z]{1,2})\b[ \t]+\$?(\d[\d,]*\.\d{2})[ \t]*$",
+        scope,
+    ):
+        code = m.group(1).upper()
+        if code not in _BOX12_CODES:
+            continue
+        val = parse_amount_token(m.group(2))
+        if val is not None and code not in result:
+            result[code] = val
+
+    # Pass F — generic next-line: "12x [any label]\n CODE $amount".
+    # Handles payroll systems whose box-12 label doesn't use "Code" or "See inst"
+    # (e.g. IDMS "12a - Depress F1 for codes\nS $17,575.00").
+    # _BOX12_CODES allowlist prevents false positives.
+    for m in re.finditer(
+        r"12[a-d]\b[^\n]*\n\s*([A-Z]{1,2})[ \t]+\$?(\d[\d,]*\.\d{2})",
+        scope, re.IGNORECASE,
     ):
         code = m.group(1).upper()
         if code not in _BOX12_CODES:
@@ -315,13 +348,15 @@ def _extract_employer_address(
     Pass B — Inline labeled field: 'Employer's address: ...'
     Pass C — Positional: search the ~300 chars surrounding the EIN.
     """
-    # Pass A — "c Employer's name, address..." block (labeled/synthetic PDFs)
+    # Pass A — "c Employer's name, address..." block (labeled/synthetic PDFs).
+    # Captures up to 6 lines so multi-line employer names (e.g. IDMS) don't push
+    # the street/CSZ outside the search window.
     m = re.search(
-        r"(?:c\s+)?Employer(?:'s)?\s+name[,\s][^\n]*\n([^\n]+)\n([^\n]+)\n([^\n]+)",
+        r"(?:c\s+)?Employer(?:'s)?\s+name[,\s][^\n]*((?:\n[^\n]+){1,6})",
         text, re.IGNORECASE,
     )
     if m:
-        candidates = [m.group(1).strip(), m.group(2).strip(), m.group(3).strip()]
+        candidates = [l.strip() for l in m.group(1).split("\n") if l.strip()]
         idx, city, state, zip_ = _find_csz(candidates)
         if state:
             return _street_before(candidates, idx), city, state, zip_
@@ -474,13 +509,23 @@ def _extract_employee_name(text: str) -> str | None:
     name on a line immediately followed by a digit (start of a street address).
     This targets the cleanest copy in multi-copy PDFs (e.g. Dayforce page 2).
     """
-    # Label-based
+    # Label-based — handles "e Employee's first name..." and ADP "e/f Employee's name..."
     m = re.search(
-        r"e\s+Employee(?:'s)?\s+(?:first\s+name|name)[^\n]*\n\s*(.+?)(?:\n|$)",
+        r"e(?:/f)?\s+Employee(?:'s)?\s+(?:first\s+name|name)[^\n]*\n\s*(.+?)(?:\n|$)",
         text, re.IGNORECASE,
     )
     if m:
         name_raw = m.group(1).strip()
+        # If we captured a column sub-header (e.g. "Last name", "Suff.") instead
+        # of the actual name — which happens when pdfplumber separates the IRS
+        # "first name | last name" columns onto individual lines — scan forward
+        # for the first non-header non-empty line.
+        if re.match(r"^(?:last\s+name|suff\.?|suffix)$", name_raw, re.IGNORECASE):
+            for ln in text[m.end(): m.end() + 300].split("\n"):
+                ln = ln.strip()
+                if ln and not re.match(r"^(?:last\s+name|suff\.?|suffix)$", ln, re.IGNORECASE):
+                    name_raw = ln
+                    break
         name_raw = re.sub(r"\b\d{5}(?:-\d{4})?\b", "", name_raw)
         return re.sub(r"\s{2,}", " ", name_raw).strip()[:80] or None
 
@@ -626,6 +671,22 @@ def parse_w2_text(text: str, fallback_year: int | None = None) -> W2Data:
     # the state fields are blank — common for employees in no-income-tax states like TX.
     data.box16_state_wages = extract_amount_after_label(r"(?:Box\s*16|16\.?\s*State\s*wages)", text, require_decimal=True)
     data.box17_state_tax = extract_amount_after_label(r"(?:Box\s*17|17\.?\s*State\s*income\s*tax)", text, require_decimal=True)
+
+    # IRS official form state section: labels appear on one header row and amounts
+    # on the next data row as "ST  employer_state_id  wages  tax".
+    # The state employer ID (e.g. "12-3456789") sits between the label and the wage
+    # amount, so label-based extraction above cannot see the amount directly.
+    if data.box16_state_wages is None or data.box17_state_tax is None:
+        state_data_m = re.search(
+            r"(?:16\s+State\s+wages|State\s+wages[^\n]*17)[^\n]*\n"
+            r"\s*[A-Z]{2}\s+\S+\s+(\d[\d,]*\.\d{2})(?:[ \t]+(\d[\d,]*\.\d{2}))?",
+            text, re.IGNORECASE,
+        )
+        if state_data_m:
+            if data.box16_state_wages is None:
+                data.box16_state_wages = parse_amount_token(state_data_m.group(1))
+            if data.box17_state_tax is None and state_data_m.group(2):
+                data.box17_state_tax = parse_amount_token(state_data_m.group(2))
 
     # --- Employer address ---
     (

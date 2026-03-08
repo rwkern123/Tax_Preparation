@@ -317,5 +317,165 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(data.b_summary["wash_sales"], -125.00)
 
 
+    def test_parse_w2_idms_style(self):
+        """IDMS payroll: 'Depress F1 for codes' label, '$' amounts, multi-line employer name."""
+        text = (
+            "W-2 - IDMS\n"
+            "a Employee's SSN\n"
+            "102110029\n"
+            "b Employer identification number (EIN)\n"
+            "99-9999999 (941)\n"
+            "c Employer's name, address, and ZIP code\n"
+            "INTEGRATED DATA MANAGEMENT SYSTEMS\n"
+            "ACCOUNT ABILITY COMPLIANCE SOFTWARE\n"
+            "555 BROADHOLLOW ROAD SUITE 273\n"
+            "MELVILLE NY 11747-5001\n"
+            "1 Wages, tips, other comp\n"
+            "$385,000.00\n"
+            "2 Federal income tax withheld\n"
+            "$102,255.00\n"
+            "3 Social security wages\n"
+            "$138,600.00\n"
+            "4 Social security tax withheld\n"
+            "$10,918.20\n"
+            "5 Medicare wages and tips\n"
+            "$402,575.00\n"
+            "6 Medicare tax withheld\n"
+            "$7,660.52\n"
+            "12a - Depress F1 for codes\n"
+            "S $17,575.00\n"
+            "12b - Depress F1 for codes\n"
+            "FF $52,500.00\n"
+            "12c - Depress F1 for codes\n"
+            "DD $9,340.00\n"
+            "12d - Depress F1 for codes\n"
+            "J $7,692.00\n"
+            "e Employee's first name MI Last name\n"
+            "JOHN M DOE\n"
+            "33 EAST 17 STREET STE 201\n"
+            "NEW YORK NY 10003\n"
+            "2025 - Form W-2 Wage and Tax Statement\n"
+        )
+        data = parse_w2_text(text)
+        self.assertEqual(data.employer_ein, "99-9999999")
+        self.assertEqual(data.employer_name, "INTEGRATED DATA MANAGEMENT SYSTEMS")
+        self.assertEqual(data.employer_city, "MELVILLE")
+        self.assertEqual(data.employer_state, "NY")
+        self.assertEqual(data.employer_zip, "11747-5001")
+        self.assertEqual(data.employee_name, "JOHN M DOE")
+        self.assertEqual(data.box1_wages, 385000.00)
+        self.assertEqual(data.box2_fed_withholding, 102255.00)
+        self.assertEqual(data.box12.get("S"), 17575.00)
+        self.assertEqual(data.box12.get("FF"), 52500.00)
+        self.assertEqual(data.box12.get("DD"), 9340.00)
+        self.assertEqual(data.box12.get("J"), 7692.00)
+
+    def test_parse_w2_adp_style(self):
+        """ADP W-2: 'e/f Employee's name' combined label and box 12 on next line."""
+        text = (
+            "W-2 Wage and Tax 20XX\n"
+            "c Employer's name, address, and ZIP code\n"
+            "SAMPLE COMPANY INC\n"
+            "123 MAIN ST\n"
+            "ANYWHERE CA 123456\n"
+            "b Employer's FED ID number\n"
+            "12-3456789\n"
+            "e/f Employee's name, address, and ZIP code\n"
+            "JOHN SMITH\n"
+            "1234 S MAPLE ST\n"
+            "ANYWHERE CA 123456\n"
+            "1 Wages, tips, other comp.\n"
+            "23500.00\n"
+            "2 Federal income tax withheld\n"
+            "1500.00\n"
+            "3 Social security wages\n"
+            "23500.00\n"
+            "4 Social security tax withheld\n"
+            "1457.00\n"
+            "5 Medicare wages and tips\n"
+            "23500.00\n"
+            "6 Medicare tax withheld\n"
+            "340.75\n"
+            "12a See instructions for box 12\n"
+            "W 500.00\n"
+            "16 State wages, tips, etc.\n"
+            "23500.00\n"
+            "17 State income tax\n"
+            "800.00\n"
+        )
+        data = parse_w2_text(text)
+        self.assertEqual(data.employer_ein, "12-3456789")
+        self.assertEqual(data.employee_name, "JOHN SMITH")
+        self.assertEqual(data.box1_wages, 23500.00)
+        self.assertEqual(data.box2_fed_withholding, 1500.00)
+        self.assertEqual(data.box12.get("W"), 500.00)
+        self.assertEqual(data.box16_state_wages, 23500.00)
+        self.assertEqual(data.box17_state_tax, 800.00)
+
+    def test_parse_w2_irs_official_style(self):
+        """IRS official Copy A/B: split first-name/last-name columns, 'f' address label."""
+        text = (
+            "b Employer identification number (EIN)\n"
+            "12-1234567\n"
+            "c Employer's name, address, and ZIP code\n"
+            "Company ABC\n"
+            "444 Example Road\n"
+            "Columbus OH 43218\n"
+            "1 Wages, tips, other compensation\n"
+            "50000.00\n"
+            "2 Federal income tax withheld\n"
+            "4300.00\n"
+            "3 Social security wages\n"
+            "50000.00\n"
+            "4 Social security tax withheld\n"
+            "3100.00\n"
+            "5 Medicare wages and tips\n"
+            "50000.00\n"
+            "6 Medicare tax withheld\n"
+            "725.00\n"
+            "e Employee's first name and initial  Last name  Suff.\n"
+            "Abby L  Smith\n"
+            "f Employee's address and ZIP code\n"
+            "123 Sample Road\n"
+            "Columbus OH 43218\n"
+            "15 State  16 State wages, tips, etc.  17 State income tax\n"
+            "OH  12-3456789  50000.00  1000.63\n"
+            "Form W-2 Wage and Tax Statement 2025\n"
+        )
+        data = parse_w2_text(text)
+        self.assertEqual(data.year, 2025)
+        self.assertEqual(data.employer_ein, "12-1234567")
+        self.assertEqual(data.employer_name, "Company ABC")
+        self.assertEqual(data.employer_city, "Columbus")
+        self.assertEqual(data.employer_state, "OH")
+        self.assertEqual(data.employee_name, "Abby L Smith")
+        self.assertEqual(data.box1_wages, 50000.00)
+        self.assertEqual(data.box2_fed_withholding, 4300.00)
+        self.assertEqual(data.box16_state_wages, 50000.00)
+
+    def test_parse_w2_irs_split_name_columns(self):
+        """IRS form where pdfplumber separates first-name and last-name onto individual lines."""
+        text = (
+            "Form W-2 Wage and Tax Statement 2023\n"
+            "b Employer identification number (EIN)\n"
+            "12-3456789\n"
+            "c Employer's name, address, and ZIP code\n"
+            "New Technology Company\n"
+            "100 Somewhere Rd Suite 123\n"
+            "Los Angeles CA 90000\n"
+            "1 Wages, tips, other compensation  2736.09\n"
+            "e Employee's first name and initial\n"
+            "Last name\n"
+            "John J\n"
+            "Hall\n"
+            "Flower Lane\n"
+            "Los Angeles CA 94001\n"
+        )
+        data = parse_w2_text(text)
+        # Should skip the "Last name" sub-header and capture the actual name
+        self.assertNotEqual(data.employee_name, "Last name")
+        self.assertIsNotNone(data.employee_name)
+
+
 if __name__ == "__main__":
     unittest.main()

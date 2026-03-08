@@ -41,10 +41,20 @@ def parse_amount_token(raw: str) -> Optional[float]:
         return None
 
 
-def extract_amount_after_label(label_pattern: str, text: str) -> Optional[float]:
+def extract_amount_after_label(
+    label_pattern: str, text: str, require_decimal: bool = False
+) -> Optional[float]:
     # Allow up to 60 chars between label and value to handle wide-column PDF table layouts
     # (pdfplumber linearizes two-column forms, creating large gaps between label and value).
-    m = re.search(label_pattern + r"[^\d\-\($]{0,60}(\(?-?\$?\s*[\d,]+(?:\.\d{2})?\)?)", text, re.IGNORECASE)
+    # When require_decimal=True the matched amount must contain a ".XX" fractional part,
+    # which prevents bare integers (e.g. the next box number) from being captured when a
+    # field is genuinely empty on the form (common for state boxes on no-income-tax states).
+    decimal_part = r"\.\d{2}" if require_decimal else r"(?:\.\d{2})?"
+    m = re.search(
+        label_pattern + r"[^\d\-\($]{0,60}(\(?-?\$?\s*[\d,]+" + decimal_part + r"\)?)",
+        text,
+        re.IGNORECASE,
+    )
     if not m:
         _log.debug("extract_amount_after_label: no match for pattern %r in %d chars of text", label_pattern, len(text))
         return None

@@ -146,7 +146,11 @@ def get_document_text(path: Path, enable_ocr: bool) -> tuple[str, list[str]]:
         text, pdf_notes = extract_pdf_text(path)
         notes.extend(pdf_notes)
     ocr_used = False
-    if enable_ocr and len(text) < MIN_TEXT_LENGTH_FOR_OCR_SKIP:
+    # Always attempt OCR when embedded text is completely empty (image-only PDF),
+    # even if --ocr was not explicitly requested.  This makes the pipeline adaptive:
+    # pdfplumber/pypdf is the primary method; OCR is the automatic fallback.
+    auto_ocr = len(text) == 0
+    if (enable_ocr and len(text) < MIN_TEXT_LENGTH_FOR_OCR_SKIP) or auto_ocr:
         ocr_text, ocr_notes = ocr_image_or_pdf(path)
         notes.extend(ocr_notes)
         if ocr_text:

@@ -622,8 +622,10 @@ def parse_w2_text(text: str, fallback_year: int | None = None) -> W2Data:
     data.box13_retirement_plan = _detect_box13(text)
 
     # --- State boxes 15–17 ---
-    data.box16_state_wages = extract_amount_after_label(r"(?:Box\s*16|16\.?\s*State\s*wages)", text)
-    data.box17_state_tax = extract_amount_after_label(r"(?:Box\s*17|17\.?\s*State\s*income\s*tax)", text)
+    # require_decimal=True prevents matching bare box numbers (e.g. "17" or "13") when
+    # the state fields are blank — common for employees in no-income-tax states like TX.
+    data.box16_state_wages = extract_amount_after_label(r"(?:Box\s*16|16\.?\s*State\s*wages)", text, require_decimal=True)
+    data.box17_state_tax = extract_amount_after_label(r"(?:Box\s*17|17\.?\s*State\s*income\s*tax)", text, require_decimal=True)
 
     # --- Employer address ---
     (

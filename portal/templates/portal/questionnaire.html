@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}Questionnaire {{ year }} — Tax Portal{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+    <div class="container">
+
+        <div class="page-header">
+            <div class="breadcrumb">
+                <a href="{{ url_for('portal.dashboard') }}">Dashboard</a> &rsaquo;
+                <a href="{{ url_for('portal.year_detail', year=year) }}">{{ year }}</a> &rsaquo;
+                Questionnaire
+            </div>
+            <h1>{{ year }} Tax Questionnaire</h1>
+            <p>Based on IRS Form 13614-C. Your answers determine which documents you need to provide.</p>
+        </div>
+
+        <!-- Progress -->
+        <div class="progress-container card card-sm">
+            <div class="progress-label">
+                <span>Section {{ section_idx + 1 }} of {{ total_sections }}: <strong>{{ section.title }}</strong></span>
+                <span>{{ ((section_idx + 1) / total_sections * 100) | int }}% complete</span>
+            </div>
+            <div class="progress-bar-track">
+                <div class="progress-bar-fill"
+                     style="width: {{ ((section_idx + 1) / total_sections * 100) | int }}%;"></div>
+            </div>
+            <div class="progress-steps">
+                {% for s in sections %}
+                {% set idx = loop.index0 %}
+                <span class="progress-step
+                    {% if idx < section_idx %}progress-step-done
+                    {% elif idx == section_idx %}progress-step-current
+                    {% else %}progress-step-todo{% endif %}">
+                    {{ loop.index }}. {{ s.title.replace('Section ' + loop.index|string + ': ', '') }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Question Form -->
+        <form method="post" action="{{ url_for('portal.questionnaire', year=year) }}" id="questionnaire-form">
+            <input type="hidden" name="section_idx" value="{{ section_idx }}">
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">{{ section.title }}</div>
+                </div>
+
+                {% for q in section.questions %}
+                {% set show_if = q.get('show_if') %}
+                <div class="question-block"
+                     id="qblock_{{ q.id }}"
+                     {% if show_if %}
+                     data-show-if-question="{{ show_if.question }}"
+                     data-show-if-value="{{ show_if.value }}"
+                     {% endif %}>
+
+                    {% if q.type == 'yes_no' %}
+                    <div class="question-label">{{ q.label }}</div>
+                    {% if q.get('hint') %}
+                    <div class="question-hint">{{ q.hint }}</div>
+                    {% endif %}
+                    <div class="yes-no-group">
+                        <input type="radio" id="{{ q.id }}_yes" name="{{ q.id }}" value="yes"
+                               {% if answers.get(q.id) == 'yes' %}checked{% endif %}>
+                        <label for="{{ q.id }}_yes" class="yes-no-label">YES</label>
+
+                        <input type="radio" id="{{ q.id }}_no" name="{{ q.id }}" value="no"
+                               {% if answers.get(q.id) == 'no' %}checked{% endif %}>
+                        <label for="{{ q.id }}_no" class="yes-no-label">NO</label>
+                    </div>
+
+                    {% elif q.type == 'dependents' %}
+                    <div class="question-label">{{ q.label }}</div>
+                    {% if q.get('hint') %}
+                    <div class="question-hint">{{ q.hint }}</div>
+                    {% endif %}
+
+                    <!-- Hidden input stores JSON -->
+                    <input type="hidden" name="{{ q.id }}_json" id="{{ q.id }}_json"
+                           value="{{ answers.get(q.id, []) | tojson }}">
+
+                    <div style="overflow-x:auto;">
+                        <table class="dependents-table" id="{{ q.id }}_table">
+                            <thead>
+                                <tr>
+                                    <th>First Name</th>
+                                    <th>Last Name</th>
+                                    <th>DOB</th>
+                                    <th>Relationship</th>
+                                    <th>Months in Home</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="{{ q.id }}_tbody">
+                                <!-- Rows injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm mt-1"
+                            onclick="addDependentRow('{{ q.id }}')">+ Add Dependent</button>
+
+                    {% elif q.type in ('text', 'number') %}
+                    <div class="form-group">
+                        <label for="{{ q.id }}">{{ q.label }}</label>
+                        {% if q.get('hint') %}
+                        <div class="form-hint">{{ q.hint }}</div>
+                        {% endif %}
+                        <input type="{{ q.type }}" id="{{ q.id }}" name="{{ q.id }}"
+                               class="form-control" value="{{ answers.get(q.id, '') }}">
+                    </div>
+
+                    {% elif q.type == 'select' %}
+                    <div class="form-group">
+                        <label for="{{ q.id }}">{{ q.label }}</label>
+                        {% if q.get('hint') %}
+                        <div class="form-hint">{{ q.hint }}</div>
+                        {% endif %}
+                        <select id="{{ q.id }}" name="{{ q.id }}" class="form-control">
+                            <option value="">— Select —</option>
+                            {% for opt in q.get('options', []) %}
+                            <option value="{{ opt.value }}"
+                                    {% if answers.get(q.id) == opt.value %}selected{% endif %}>
+                                {{ opt.label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="flex-between mt-2 no-print">
+                <div>
+                    {% if section_idx > 0 %}
+                    <button type="submit" name="action" value="back" class="btn btn-secondary">
+                        &larr; Back
+                    </button>
+                    {% endif %}
+                </div>
+                <div class="flex" style="gap:10px;">
+                    <button type="submit" name="action" value="save" class="btn btn-secondary">
+                        Save Progress
+                    </button>
+                    {% if is_last %}
+                    <button type="submit" name="action" value="finish" class="btn btn-success">
+                        Finish &amp; View Checklist &#10003;
+                    </button>
+                    {% else %}
+                    <button type="submit" name="action" value="next" class="btn btn-primary">
+                        Save &amp; Continue &rarr;
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ---- Show/hide logic for conditional questions ----
+var allAnswers = {{ answers | tojson }};
+var filingStatus = "{{ filing_status }}";
+var isMarried = (filingStatus === 'mfj' || filingStatus === 'mfs');
+
+function getAnswer(questionId) {
+    // Check live radio buttons first
+    var radios = document.querySelectorAll('input[name="' + questionId + '"]');
+    for (var i = 0; i < radios.length; i++) {
+        if (radios[i].checked) return radios[i].value;
+    }
+    return allAnswers[questionId] || '';
+}
+
+function evaluateShowIf(block) {
+    var q = block.dataset.showIfQuestion;
+    var v = block.dataset.showIfValue;
+    if (!q) return true;
+
+    if (q === '_married') {
+        return isMarried;
+    }
+    return getAnswer(q) === v;
+}
+
+function updateVisibility() {
+    var blocks = document.querySelectorAll('[data-show-if-question]');
+    blocks.forEach(function(block) {
+        if (evaluateShowIf(block)) {
+            block.style.display = '';
+        } else {
+            block.style.display = 'none';
+        }
+    });
+}
+
+// Listen for radio changes
+document.querySelectorAll('input[type="radio"]').forEach(function(radio) {
+    radio.addEventListener('change', updateVisibility);
+});
+
+// Initial run
+updateVisibility();
+
+// ---- Dependents table ----
+var dependentData = {};
+
+function initDependentData(fieldId) {
+    var stored = document.getElementById(fieldId + '_json');
+    if (stored) {
+        try {
+            var arr = JSON.parse(stored.value);
+            dependentData[fieldId] = Array.isArray(arr) ? arr : [];
+        } catch(e) {
+            dependentData[fieldId] = [];
+        }
+        renderDependentRows(fieldId);
+    }
+}
+
+function renderDependentRows(fieldId) {
+    var tbody = document.getElementById(fieldId + '_tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    var rows = dependentData[fieldId] || [];
+    rows.forEach(function(dep, idx) {
+        tbody.appendChild(createDependentRow(fieldId, dep, idx));
+    });
+}
+
+function createDependentRow(fieldId, dep, idx) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = [
+        '<td><input type="text" placeholder="First name" value="' + escHtml(dep.first_name || '') + '" oninput="updateDependent(\'' + fieldId + '\',' + idx + ',\'first_name\',this.value)"></td>',
+        '<td><input type="text" placeholder="Last name" value="' + escHtml(dep.last_name || '') + '" oninput="updateDependent(\'' + fieldId + '\',' + idx + ',\'last_name\',this.value)"></td>',
+        '<td><input type="date" value="' + escHtml(dep.dob || '') + '" oninput="updateDependent(\'' + fieldId + '\',' + idx + ',\'dob\',this.value)"></td>',
+        '<td><select onchange="updateDependent(\'' + fieldId + '\',' + idx + ',\'relationship\',this.value)">' +
+            buildRelOptions(dep.relationship || '') + '</select></td>',
+        '<td><input type="number" min="0" max="12" value="' + escHtml(String(dep.months || '')) + '" oninput="updateDependent(\'' + fieldId + '\',' + idx + ',\'months\',this.value)" style="width:60px;"></td>',
+        '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeDependent(\'' + fieldId + '\',' + idx + ')">&#128465;</button></td>',
+    ].join('');
+    return tr;
+}
+
+function buildRelOptions(selected) {
+    var opts = ['','Child','Stepchild','Foster Child','Sibling','Grandchild','Other'];
+    return opts.map(function(o) {
+        return '<option value="' + o + '"' + (o === selected ? ' selected' : '') + '>' + (o || '— Select —') + '</option>';
+    }).join('');
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function addDependentRow(fieldId) {
+    if (!dependentData[fieldId]) dependentData[fieldId] = [];
+    dependentData[fieldId].push({first_name:'',last_name:'',dob:'',relationship:'',months:''});
+    renderDependentRows(fieldId);
+    saveDependentJson(fieldId);
+}
+
+function removeDependent(fieldId, idx) {
+    dependentData[fieldId].splice(idx, 1);
+    renderDependentRows(fieldId);
+    saveDependentJson(fieldId);
+}
+
+function updateDependent(fieldId, idx, key, value) {
+    if (!dependentData[fieldId]) dependentData[fieldId] = [];
+    if (!dependentData[fieldId][idx]) dependentData[fieldId][idx] = {};
+    dependentData[fieldId][idx][key] = value;
+    saveDependentJson(fieldId);
+}
+
+function saveDependentJson(fieldId) {
+    var hidden = document.getElementById(fieldId + '_json');
+    if (hidden) {
+        hidden.value = JSON.stringify(dependentData[fieldId] || []);
+    }
+}
+
+// Initialize all dependent tables on the page
+document.querySelectorAll('[id$="_tbody"]').forEach(function(tbody) {
+    var fieldId = tbody.id.replace('_tbody','');
+    initDependentData(fieldId);
+});
+</script>
+{% endblock %}

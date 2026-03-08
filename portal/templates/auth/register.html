@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Create Account — Tax Portal{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper" style="align-items: flex-start; padding-top: 40px;">
+    <div class="auth-card auth-card-wide">
+        <div class="auth-logo">
+            <h2>&#128196; Create Your Account</h2>
+            <p>Secure client portal for your tax documents</p>
+        </div>
+
+        <form method="post" action="{{ url_for('auth.register') }}" novalidate>
+
+            <!-- Section 1: Personal Information -->
+            <div class="form-section">
+                <div class="form-section-title">Personal Information</div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="first_name">First Name <span class="required">*</span></label>
+                        <input type="text" id="first_name" name="first_name" class="form-control"
+                               value="{{ form.get('first_name', '') }}" required autocomplete="given-name">
+                    </div>
+                    <div class="form-group">
+                        <label for="last_name">Last Name <span class="required">*</span></label>
+                        <input type="text" id="last_name" name="last_name" class="form-control"
+                               value="{{ form.get('last_name', '') }}" required autocomplete="family-name">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="email">Email Address <span class="required">*</span></label>
+                        <input type="email" id="email" name="email" class="form-control"
+                               value="{{ form.get('email', '') }}" required autocomplete="email"
+                               placeholder="you@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="phone">Phone Number</label>
+                        <input type="tel" id="phone" name="phone" class="form-control"
+                               value="{{ form.get('phone', '') }}" autocomplete="tel"
+                               placeholder="10 digits, no dashes">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dob">Date of Birth <span class="required">*</span></label>
+                        <input type="date" id="dob" name="dob" class="form-control"
+                               value="{{ form.get('dob', '') }}" required autocomplete="bday">
+                    </div>
+                    <div class="form-group">
+                        <label for="ssn">Social Security Number <span class="required">*</span></label>
+                        <input type="password" id="ssn" name="ssn" class="form-control"
+                               value="{{ form.get('ssn', '') }}" required
+                               placeholder="XXX-XX-XXXX" pattern="\d{3}-\d{2}-\d{4}"
+                               autocomplete="off">
+                        <div class="form-hint">Format: XXX-XX-XXXX</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="address">Primary Address</label>
+                    <input type="text" id="address" name="address" class="form-control"
+                           value="{{ form.get('address', '') }}" placeholder="Street address"
+                           autocomplete="street-address">
+                </div>
+
+                <div class="form-row-3">
+                    <div class="form-group">
+                        <label for="city">City</label>
+                        <input type="text" id="city" name="city" class="form-control"
+                               value="{{ form.get('city', '') }}" autocomplete="address-level2">
+                    </div>
+                    <div class="form-group">
+                        <label for="state">State</label>
+                        <select id="state" name="state" class="form-control" autocomplete="address-level1">
+                            <option value="">— Select —</option>
+                            {% for abbr, name in [
+                                ('AL','Alabama'),('AK','Alaska'),('AZ','Arizona'),('AR','Arkansas'),
+                                ('CA','California'),('CO','Colorado'),('CT','Connecticut'),('DE','Delaware'),
+                                ('FL','Florida'),('GA','Georgia'),('HI','Hawaii'),('ID','Idaho'),
+                                ('IL','Illinois'),('IN','Indiana'),('IA','Iowa'),('KS','Kansas'),
+                                ('KY','Kentucky'),('LA','Louisiana'),('ME','Maine'),('MD','Maryland'),
+                                ('MA','Massachusetts'),('MI','Michigan'),('MN','Minnesota'),('MS','Mississippi'),
+                                ('MO','Missouri'),('MT','Montana'),('NE','Nebraska'),('NV','Nevada'),
+                                ('NH','New Hampshire'),('NJ','New Jersey'),('NM','New Mexico'),('NY','New York'),
+                                ('NC','North Carolina'),('ND','North Dakota'),('OH','Ohio'),('OK','Oklahoma'),
+                                ('OR','Oregon'),('PA','Pennsylvania'),('RI','Rhode Island'),('SC','South Carolina'),
+                                ('SD','South Dakota'),('TN','Tennessee'),('TX','Texas'),('UT','Utah'),
+                                ('VT','Vermont'),('VA','Virginia'),('WA','Washington'),('WV','West Virginia'),
+                                ('WI','Wisconsin'),('WY','Wyoming'),('DC','District of Columbia')
+                            ] %}
+                            <option value="{{ abbr }}" {% if form.get('state') == abbr %}selected{% endif %}>{{ abbr }} — {{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="zip">ZIP Code</label>
+                        <input type="text" id="zip" name="zip" class="form-control"
+                               value="{{ form.get('zip', '') }}" placeholder="XXXXX"
+                               maxlength="10" autocomplete="postal-code">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2: Filing & Account Setup -->
+            <div class="form-section">
+                <div class="form-section-title">Filing Status & Account Setup</div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="filing_status">Filing Status <span class="required">*</span></label>
+                        <select id="filing_status" name="filing_status" class="form-control"
+                                required onchange="toggleSpouseSection(this.value)">
+                            <option value="">— Select —</option>
+                            <option value="single" {% if form.get('filing_status') == 'single' %}selected{% endif %}>Single</option>
+                            <option value="mfj" {% if form.get('filing_status') == 'mfj' %}selected{% endif %}>Married Filing Jointly</option>
+                            <option value="mfs" {% if form.get('filing_status') == 'mfs' %}selected{% endif %}>Married Filing Separately</option>
+                            <option value="hoh" {% if form.get('filing_status') == 'hoh' %}selected{% endif %}>Head of Household</option>
+                            <option value="qw" {% if form.get('filing_status') == 'qw' %}selected{% endif %}>Qualifying Widow(er)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="two_fa_method">Verification Method <span class="required">*</span></label>
+                        <select id="two_fa_method" name="two_fa_method" class="form-control">
+                            <option value="email" {% if form.get('two_fa_method', 'email') == 'email' %}selected{% endif %}>Email (recommended)</option>
+                            <option value="sms" {% if form.get('two_fa_method') == 'sms' %}selected{% endif %}>SMS (requires configuration)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="password">Password <span class="required">*</span></label>
+                        <input type="password" id="password" name="password" class="form-control"
+                               required minlength="8" autocomplete="new-password">
+                        <div class="form-hint">Minimum 8 characters</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm_password">Confirm Password <span class="required">*</span></label>
+                        <input type="password" id="confirm_password" name="confirm_password" class="form-control"
+                               required minlength="8" autocomplete="new-password">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Spouse Information (shown/hidden by JS) -->
+            <div class="form-section" id="spouse-section" style="display:none;">
+                <div class="form-section-title">Spouse Information</div>
+                <p class="text-muted mb-2" style="font-size:0.875rem;">Required for Married Filing Jointly or Separately</p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="spouse_first_name">Spouse First Name <span class="required">*</span></label>
+                        <input type="text" id="spouse_first_name" name="spouse_first_name" class="form-control"
+                               value="{{ form.get('spouse_first_name', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="spouse_last_name">Spouse Last Name <span class="required">*</span></label>
+                        <input type="text" id="spouse_last_name" name="spouse_last_name" class="form-control"
+                               value="{{ form.get('spouse_last_name', '') }}">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="spouse_dob">Spouse Date of Birth <span class="required">*</span></label>
+                        <input type="date" id="spouse_dob" name="spouse_dob" class="form-control"
+                               value="{{ form.get('spouse_dob', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="spouse_ssn">Spouse SSN <span class="required">*</span></label>
+                        <input type="password" id="spouse_ssn" name="spouse_ssn" class="form-control"
+                               value="{{ form.get('spouse_ssn', '') }}"
+                               placeholder="XXX-XX-XXXX" pattern="\d{3}-\d{2}-\d{4}"
+                               autocomplete="off">
+                        <div class="form-hint">Format: XXX-XX-XXXX</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mt-2">
+                <button type="submit" class="btn btn-primary" style="min-width: 180px; font-size:1rem; padding: 12px 28px;">
+                    Create Account
+                </button>
+            </div>
+        </form>
+
+        <div class="auth-footer">
+            Already have an account?
+            <a href="{{ url_for('auth.login') }}">Sign In</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSpouseSection(filingStatus) {
+    var section = document.getElementById('spouse-section');
+    var spouseFields = section.querySelectorAll('input');
+    if (filingStatus === 'mfj' || filingStatus === 'mfs') {
+        section.style.display = 'block';
+        spouseFields.forEach(function(f) {
+            if (f.id === 'spouse_first_name' || f.id === 'spouse_last_name' ||
+                f.id === 'spouse_dob' || f.id === 'spouse_ssn') {
+                f.required = true;
+            }
+        });
+    } else {
+        section.style.display = 'none';
+        spouseFields.forEach(function(f) { f.required = false; });
+    }
+}
+
+// Run on page load to handle validation re-renders
+(function() {
+    var fs = document.getElementById('filing_status');
+    if (fs) toggleSpouseSection(fs.value);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Verify Your Identity — Tax Portal{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <h2>&#128274; Two-Factor Verification</h2>
+            <p>Enter the 6-digit code to continue</p>
+        </div>
+
+        {% if method == 'email' and email %}
+        <div class="info-box">
+            A verification code was sent to
+            <strong>
+                {% set parts = email.split('@') %}
+                {{ parts[0][:2] }}***@{{ parts[1] }}
+            </strong>.
+            Check your inbox (or the server console if running in development mode).
+        </div>
+        {% elif method == 'sms' and phone %}
+        <div class="info-box">
+            A verification code was sent via SMS to
+            <strong>***-***-{{ phone[-4:] if phone|length >= 4 else '****' }}</strong>.
+        </div>
+        {% else %}
+        <div class="info-box">
+            A verification code has been generated. Check the server console.
+        </div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('auth.verify') }}" novalidate>
+            <div class="code-input-wrapper">
+                <input type="text" name="code" class="code-input"
+                       maxlength="6" pattern="\d{6}" inputmode="numeric"
+                       placeholder="000000" autocomplete="one-time-code"
+                       required autofocus>
+            </div>
+
+            <button type="submit" class="btn btn-primary"
+                    style="width:100%; justify-content:center; padding:12px; font-size:1rem;">
+                Verify &amp; Sign In
+            </button>
+        </form>
+
+        <div class="auth-footer mt-2">
+            Didn't receive a code?
+            <a href="{{ url_for('auth.resend_code') }}">Resend code</a>
+            &nbsp;&mdash;&nbsp;
+            <a href="{{ url_for('auth.login') }}">Back to login</a>
+        </div>
+
+        <div class="security-note mt-2">
+            Codes expire after 10 minutes. Do not share your code with anyone.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-submit when 6 digits entered
+var codeInput = document.querySelector('.code-input');
+if (codeInput) {
+    codeInput.addEventListener('input', function() {
+        var val = this.value.replace(/\D/g, '');
+        this.value = val;
+        if (val.length === 6) {
+            this.closest('form').submit();
+        }
+    });
+}
+</script>
+{% endblock %}

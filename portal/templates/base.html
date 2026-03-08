@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Client Tax Portal{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="{{ url_for('portal.dashboard') if session.get('user_id') else url_for('auth.login') }}"
+               class="navbar-brand">
+                <span class="brand-icon">&#128196;</span>
+                Tax Preparation Portal
+            </a>
+
+            {% if session.get('user_id') %}
+            <div class="navbar-user">
+                <span>{{ session.get('user_name', '') }}</span>
+                <a href="{{ url_for('auth.logout') }}">Sign Out</a>
+            </div>
+            {% endif %}
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="container" style="padding-top: 16px;">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category if category in ('success','error','info','warning') else 'info' }}">
+            <span>
+                {% if category == 'success' %}&#10003;{% elif category == 'error' %}&#9888;{% else %}&#9432;{% endif %}
+            </span>
+            <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <!-- Page Content -->
+    {% block content %}{% endblock %}
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

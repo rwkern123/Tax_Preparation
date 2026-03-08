@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}{{ year }} Documents — Tax Portal{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+    <div class="container">
+
+        <div class="page-header">
+            <div class="breadcrumb">
+                <a href="{{ url_for('portal.dashboard') }}">Dashboard</a> &rsaquo;
+                {{ year }} Document Checklist
+            </div>
+            <div class="flex-between" style="flex-wrap:wrap; gap:12px;">
+                <div>
+                    <h1>{{ year }} Document Checklist</h1>
+                    <p>
+                        Required documents based on your questionnaire answers.
+                        {% if not questionnaire_complete %}
+                        <a href="{{ url_for('portal.questionnaire', year=year) }}">Complete the questionnaire</a>
+                        to get a full personalized list.
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="no-print" style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;">
+                    <a href="{{ url_for('portal.questionnaire', year=year) }}" class="btn btn-secondary btn-sm">
+                        Edit Questionnaire
+                    </a>
+                    <button onclick="window.print()" class="btn btn-outline btn-sm">
+                        &#128438; Print Checklist
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Summary -->
+        <div class="card card-sm" style="margin-bottom:20px;">
+            {% set uploaded_count = docs | selectattr('uploaded') | list | length %}
+            {% set total_count = docs | length %}
+            <div class="flex-between" style="flex-wrap:wrap; gap:12px;">
+                <div>
+                    <span class="fw-bold" style="font-size:1.1rem;">
+                        {{ uploaded_count }} / {{ total_count }} documents uploaded
+                    </span>
+                    <div class="text-muted" style="font-size:0.82rem; margin-top:3px;">
+                        Questionnaire status:
+                        <span class="badge {{ status.status_class }}">{{ status.status }}</span>
+                    </div>
+                </div>
+                {% if uploaded_count == total_count and total_count > 0 %}
+                <span class="badge badge-success" style="font-size:0.9rem; padding:6px 14px;">
+                    &#10003; All documents uploaded!
+                </span>
+                {% else %}
+                <span class="text-muted" style="font-size:0.85rem;">
+                    {{ total_count - uploaded_count }} still needed
+                </span>
+                {% endif %}
+            </div>
+            {% if total_count > 0 %}
+            <div class="progress-bar-track" style="margin-top:12px;">
+                <div class="progress-bar-fill"
+                     style="width:{{ (uploaded_count / total_count * 100) | int if total_count else 0 }}%;"></div>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if docs %}
+        <!-- Always-required docs first -->
+        {% set always_required = docs | selectattr('category', 'in', ['Prior_Year_Return', 'ID']) | list %}
+        {% set other_docs = docs | rejectattr('category', 'in', ['Prior_Year_Return', 'ID']) | list %}
+
+        {% if other_docs %}
+        <h2 style="font-size:1.1rem; font-weight:700; color:#1e3a5f; margin-bottom:12px;">
+            Required Based on Your Answers
+        </h2>
+        <div class="doc-list">
+            {% for doc in other_docs %}
+            <div class="doc-item {{ 'doc-uploaded' if doc.uploaded else 'doc-needed' }}">
+                <div class="doc-item-header">
+                    <div class="doc-item-info">
+                        <div class="doc-item-title">{{ doc.label }}</div>
+                        <div class="doc-item-desc">{{ doc.description }}</div>
+                    </div>
+                    <div class="doc-item-status">
+                        {% if doc.uploaded %}
+                        <span class="badge badge-success">&#10003; Uploaded</span>
+                        {% else %}
+                        <span class="badge" style="background:#fed7d7; color:#742a2a;">Needed</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Uploaded files list -->
+                {% if doc.uploads %}
+                <div class="uploaded-files">
+                    {% for upload in doc.uploads %}
+                    <div class="uploaded-file">
+                        <span>&#128196;</span>
+                        <span class="uploaded-file-name" title="{{ upload.original_name }}">
+                            {{ upload.original_name }}
+                        </span>
+                        <form method="post"
+                              action="{{ url_for('portal.delete_upload_file', year=year, upload_id=upload.id) }}"
+                              style="margin:0;" class="no-print"
+                              onsubmit="return confirm('Delete {{ upload.original_name }}?');">
+                            <button type="submit" class="btn btn-danger btn-sm"
+                                    style="padding:2px 8px; font-size:0.75rem;">
+                                &#128465;
+                            </button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Upload area -->
+                <div class="doc-upload-area no-print">
+                    <form method="post"
+                          action="{{ url_for('portal.upload_file', year=year, category=doc.category) }}"
+                          enctype="multipart/form-data" style="display:flex; align-items:center; gap:10px;">
+                        <input type="file"
+                               name="file"
+                               id="file_{{ doc.category }}"
+                               class="doc-upload-input"
+                               accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.doc,.docx,.xls,.xlsx,.csv"
+                               onchange="this.form.submit()">
+                        <label for="file_{{ doc.category }}" class="doc-upload-label">
+                            &#128194; Choose File
+                        </label>
+                        <span class="form-hint">PDF, JPG, PNG, TIFF, DOC, XLS, CSV — max 50 MB</span>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if always_required %}
+        <h2 style="font-size:1.1rem; font-weight:700; color:#1e3a5f; margin:28px 0 12px;">
+            Always Required
+        </h2>
+        <div class="doc-list">
+            {% for doc in always_required %}
+            <div class="doc-item {{ 'doc-uploaded' if doc.uploaded else 'doc-needed' }}">
+                <div class="doc-item-header">
+                    <div class="doc-item-info">
+                        <div class="doc-item-title">{{ doc.label }}</div>
+                        <div class="doc-item-desc">{{ doc.description }}</div>
+                    </div>
+                    <div class="doc-item-status">
+                        {% if doc.uploaded %}
+                        <span class="badge badge-success">&#10003; Uploaded</span>
+                        {% else %}
+                        <span class="badge" style="background:#fed7d7; color:#742a2a;">Needed</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if doc.uploads %}
+                <div class="uploaded-files">
+                    {% for upload in doc.uploads %}
+                    <div class="uploaded-file">
+                        <span>&#128196;</span>
+                        <span class="uploaded-file-name" title="{{ upload.original_name }}">
+                            {{ upload.original_name }}
+                        </span>
+                        <form method="post"
+                              action="{{ url_for('portal.delete_upload_file', year=year, upload_id=upload.id) }}"
+                              style="margin:0;" class="no-print"
+                              onsubmit="return confirm('Delete {{ upload.original_name }}?');">
+                            <button type="submit" class="btn btn-danger btn-sm"
+                                    style="padding:2px 8px; font-size:0.75rem;">
+                                &#128465;
+                            </button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="doc-upload-area no-print">
+                    <form method="post"
+                          action="{{ url_for('portal.upload_file', year=year, category=doc.category) }}"
+                          enctype="multipart/form-data" style="display:flex; align-items:center; gap:10px;">
+                        <input type="file"
+                               name="file"
+                               id="file_{{ doc.category }}"
+                               class="doc-upload-input"
+                               accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.doc,.docx,.xls,.xlsx,.csv"
+                               onchange="this.form.submit()">
+                        <label for="file_{{ doc.category }}" class="doc-upload-label">
+                            &#128194; Choose File
+                        </label>
+                        <span class="form-hint">PDF, JPG, PNG, TIFF, DOC, XLS, CSV — max 50 MB</span>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <!-- No questionnaire answered yet -->
+        <div class="card" style="text-align:center; padding:48px 32px;">
+            <div style="font-size:3rem; margin-bottom:16px;">&#128203;</div>
+            <h2 style="color:#1e3a5f; margin-bottom:8px;">No Documents Listed Yet</h2>
+            <p class="text-muted" style="margin-bottom:24px;">
+                Complete the tax questionnaire to generate your personalized document checklist.
+            </p>
+            <a href="{{ url_for('portal.questionnaire', year=year) }}" class="btn btn-primary">
+                Start Questionnaire &rarr;
+            </a>
+        </div>
+        {% endif %}
+
+        <div class="security-note">
+            &#128274; Uploaded documents are stored locally on this device only.
+            Files are never transmitted over the internet.
+        </div>
+
+    </div>
+</div>
+{% endblock %}

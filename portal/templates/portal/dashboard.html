@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Tax Portal{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+    <div class="container">
+
+        <!-- Welcome Header -->
+        <div class="page-header">
+            <h1>Welcome back, {{ session.get('user_name', 'Client').split()[0] }}!</h1>
+            <p>Select a tax year below to view your questionnaire and document checklist.</p>
+        </div>
+
+        <!-- Year Cards -->
+        <div class="year-grid">
+            {% for y in years %}
+            <div class="year-card {% if y.is_current %}year-current{% endif %}">
+                <div>
+                    <div class="year-card-year">{{ y.year }}</div>
+                    {% if y.is_current %}
+                    <span class="badge badge-primary" style="margin-top:4px;">Current Year</span>
+                    {% endif %}
+                </div>
+
+                <div class="flex" style="gap:8px; flex-wrap:wrap;">
+                    <span class="badge {{ y.status_class }}">{{ y.status }}</span>
+                    {% if y.doc_count > 0 %}
+                    <span class="badge badge-primary">{{ y.doc_count }} file{{ 's' if y.doc_count != 1 }}</span>
+                    {% endif %}
+                </div>
+
+                <div class="year-card-meta">
+                    {% if y.status == 'Complete' %}
+                    Questionnaire complete. Review your documents.
+                    {% elif y.status == 'In Progress' %}
+                    Questionnaire in progress. Continue where you left off.
+                    {% else %}
+                    Start by completing the tax questionnaire.
+                    {% endif %}
+                </div>
+
+                <div class="year-card-footer">
+                    {% if y.status == 'Not Started' %}
+                    <a href="{{ url_for('portal.questionnaire', year=y.year) }}"
+                       class="btn btn-primary btn-sm">Start Questionnaire</a>
+                    {% elif y.status == 'In Progress' %}
+                    <a href="{{ url_for('portal.questionnaire', year=y.year) }}"
+                       class="btn btn-primary btn-sm">Continue</a>
+                    <a href="{{ url_for('portal.year_detail', year=y.year) }}"
+                       class="btn btn-secondary btn-sm">View Documents</a>
+                    {% else %}
+                    <a href="{{ url_for('portal.year_detail', year=y.year) }}"
+                       class="btn btn-success btn-sm">View Documents</a>
+                    <a href="{{ url_for('portal.questionnaire', year=y.year) }}"
+                       class="btn btn-secondary btn-sm">Review Answers</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Security Note -->
+        <div class="security-note">
+            &#128274; All data is stored locally on this device only. Your documents
+            and personal information never leave this machine.
+        </div>
+
+    </div>
+</div>
+{% endblock %}

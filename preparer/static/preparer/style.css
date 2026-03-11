@@ -1,0 +1,84 @@
+/* ─── Preparer Dashboard Styles ─── */
+
+/* Confidence bar */
+.conf-bar-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 90px;
+  height: 18px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.conf-bar {
+  height: 100%;
+  background: #198754;
+  border-radius: 4px 0 0 4px;
+  transition: width 0.3s;
+}
+.conf-label {
+  position: absolute;
+  right: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #212529;
+  line-height: 18px;
+}
+
+/* Status chips */
+.chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.chip-neutral  { background: #e9ecef; color: #495057; }
+.chip-danger   { background: #f8d7da; color: #842029; }
+.chip-warning  { background: #fff3cd; color: #664d03; }
+.chip-info     { background: #cff4fc; color: #055160; }
+
+/* Field tables */
+.field-table td:first-child {
+  color: #6c757d;
+  font-size: 13px;
+  white-space: nowrap;
+  width: 55%;
+}
+.field-table td.amount {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  text-align: right;
+}
+.field-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #495057;
+}
+
+/* Small action buttons */
+.btn-xs {
+  padding: 1px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Status badge */
+.status-badge {
+  font-size: 12px;
+  padding: 4px 8px;
+  text-transform: capitalize;
+}
+
+/* Tab panel spacing */
+.tab-pane {
+  padding-top: 0.5rem;
+}
+
+/* Card header wrapping */
+.card-header {
+  flex-wrap: wrap;
+  gap: 6px;
+}

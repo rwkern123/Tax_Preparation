@@ -1,0 +1,426 @@
+{% extends "preparer/base.html" %}
+{% set current_year = year %}
+
+{% block title %}{{ user.first_name }} {{ user.last_name }} &mdash; {{ year }}{% endblock %}
+
+{% block content %}
+
+{# ─── Header ─── #}
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+  <a href="{{ url_for('preparer.client_list', year=year) }}" class="btn btn-sm btn-outline-secondary">&larr; All Clients</a>
+  <h4 class="mb-0 fw-bold">{{ user.first_name }} {{ user.last_name }}</h4>
+  <span class="badge bg-secondary text-capitalize">{{ user.filing_status | replace('_', ' ') }}</span>
+  <span class="text-muted small">TY {{ year }}</span>
+
+  {# Prior-year compare selector #}
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <label class="small text-muted mb-0">Compare with:</label>
+    <select id="compare-year-select" class="form-select form-select-sm" style="width:120px">
+      <option value="">-- none --</option>
+      {% for y in tax_years %}
+        {% if y != year %}
+        <option value="{{ y }}" {% if compare_year == y %}selected{% endif %}>{{ y }}</option>
+        {% endif %}
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+{# Summary chips #}
+<div class="d-flex gap-2 mb-4 flex-wrap">
+  <span class="chip chip-neutral">{{ parsed_docs | length }} document{{ 's' if parsed_docs | length != 1 }}</span>
+  {% set error_flags = all_flags | selectattr('severity', 'equalto', 'error') | list %}
+  {% set warn_flags  = all_flags | selectattr('severity', 'equalto', 'warning') | list %}
+  {% if error_flags %}
+  <span class="chip chip-danger">{{ error_flags | length }} error{{ 's' if error_flags | length != 1 }}</span>
+  {% endif %}
+  {% if warn_flags %}
+  <span class="chip chip-warning">{{ warn_flags | length }} warning{{ 's' if warn_flags | length != 1 }}</span>
+  {% endif %}
+  {% if follow_up %}
+  <span class="chip chip-info">{{ follow_up | length }} follow-up question{{ 's' if follow_up | length != 1 }}</span>
+  {% endif %}
+</div>
+
+{# ─── Tabs ─── #}
+<ul class="nav nav-tabs mb-3" id="clientTabs" role="tablist">
+  <li class="nav-item">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-docs">Document Status</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-data">Extracted Data</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link {% if all_flags %}text-danger fw-semibold{% endif %}"
+            data-bs-toggle="tab" data-bs-target="#tab-flags">
+      Flags &amp; Questions
+      {% if all_flags %}<span class="badge bg-danger ms-1">{{ all_flags | length }}</span>{% endif %}
+    </button>
+  </li>
+  {% if yoy_rows %}
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-yoy">Year-over-Year</button>
+  </li>
+  {% endif %}
+</ul>
+
+<div class="tab-content" id="clientTabContent">
+
+  {# ════════════════════════════════════════ TAB 1: Document Status ════ #}
+  <div class="tab-pane fade show active" id="tab-docs">
+    {% if not doc_status %}
+      <div class="alert alert-info">No documents expected. Ask the client to complete the questionnaire first.</div>
+    {% else %}
+    <div class="card shadow-sm">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Document</th>
+              <th class="text-center">Required</th>
+              <th class="text-center">Uploaded</th>
+              <th>Files</th>
+              <th class="text-center">Parse Status</th>
+              <th class="text-center">Confidence</th>
+              <th class="text-center">Flags</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for doc in doc_status %}
+            {% if doc.uploads %}
+              {% for upload in doc.uploads %}
+              <tr>
+                {% if loop.first %}
+                <td rowspan="{{ doc.uploads | length }}" class="fw-semibold align-top pt-3">
+                  {{ doc.label }}{% if doc.required %}<span class="text-danger">*</span>{% endif %}
+                </td>
+                <td rowspan="{{ doc.uploads | length }}" class="text-center align-top pt-3">
+                  {% if doc.required %}<span class="text-danger fw-bold">Yes</span>{% else %}<span class="text-muted">No</span>{% endif %}
+                </td>
+                <td rowspan="{{ doc.uploads | length }}" class="text-center align-top pt-3">
+                  <span class="text-success">&#10003;</span>
+                </td>
+                {% endif %}
+                <td class="small text-truncate" style="max-width:180px" title="{{ upload.original_name }}">
+                  {{ upload.original_name }}
+                </td>
+                <td class="text-center">
+                  {% if upload.parsed %}
+                    <span class="badge bg-success">Parsed</span>
+                    {% if upload.doc_type %}
+                      <span class="badge bg-secondary ms-1">{{ upload.doc_type | replace('_', ' ') }}</span>
+                    {% endif %}
+                  {% elif upload.pending %}
+                    <span class="badge bg-info text-dark">Pending</span>
+                  {% elif upload.failed %}
+                    <span class="badge bg-danger" title="{{ upload.parse_error }}">Failed</span>
+                  {% else %}
+                    <span class="text-muted small">--</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  {% if upload.confidence is not none %}
+                    <div class="conf-bar-wrap">
+                      <div class="conf-bar" style="width:{{ (upload.confidence * 100) | int }}%"
+                           data-conf="{{ upload.confidence }}"></div>
+                      <span class="conf-label">{{ (upload.confidence * 100) | int }}%</span>
+                    </div>
+                  {% else %}
+                    <span class="text-muted">--</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  {% if upload.flag_count %}
+                    <span class="badge bg-warning text-dark">{{ upload.flag_count }}</span>
+                  {% else %}
+                    <span class="text-muted">--</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if upload.upload_id %}
+                  <form method="post"
+                        action="{{ url_for('preparer.reparse', user_id=user.id, upload_id=upload.upload_id) }}"
+                        class="d-inline">
+                    <input type="hidden" name="year" value="{{ year }}">
+                    <button class="btn btn-xs btn-outline-secondary" title="Re-parse">&#8635;</button>
+                  </form>
+                  <form method="post"
+                        action="{{ url_for('preparer.reparse', user_id=user.id, upload_id=upload.upload_id) }}"
+                        class="d-inline ms-1">
+                    <input type="hidden" name="year" value="{{ year }}">
+                    <input type="hidden" name="ocr" value="1">
+                    <button class="btn btn-xs btn-outline-primary" title="Re-parse with OCR">OCR</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="fw-semibold">
+                {{ doc.label }}{% if doc.required %}<span class="text-danger">*</span>{% endif %}
+              </td>
+              <td class="text-center">
+                {% if doc.required %}<span class="text-danger fw-bold">Yes</span>{% else %}<span class="text-muted">No</span>{% endif %}
+              </td>
+              <td class="text-center"><span class="text-danger">&#10007;</span></td>
+              <td colspan="5" class="text-muted small fst-italic">No file uploaded</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ════════════════════════════════════════ TAB 2: Extracted Data ════ #}
+  <div class="tab-pane fade" id="tab-data">
+    {% if not parsed_docs %}
+      <div class="alert alert-info">No documents have been parsed yet.</div>
+    {% else %}
+      {% for pd in parsed_docs %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-dark">{{ pd.doc_type | replace('_', ' ') | title }}</span>
+          <span class="fw-semibold">{{ pd.original_name }}</span>
+          <span class="ms-auto d-flex align-items-center gap-2">
+            <span class="small text-muted">Confidence:</span>
+            <div class="conf-bar-wrap" style="width:100px">
+              <div class="conf-bar" style="width:{{ (pd.confidence * 100) | int }}%"
+                   data-conf="{{ pd.confidence }}"></div>
+              <span class="conf-label">{{ (pd.confidence * 100) | int }}%</span>
+            </div>
+          </span>
+          {% if pd.flags_json %}
+          <span class="badge bg-warning text-dark">{{ pd.flags_json | length }} flag{{ 's' if pd.flags_json | length != 1 }}</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+
+          {# ── W-2 ── #}
+          {% if pd.doc_type == 'w2' %}
+            {% for w in pd.extracted_json.get('w2', []) %}
+            <div class="row g-3">
+              <div class="col-md-6">
+                <table class="table table-sm field-table">
+                  <tr><th colspan="2" class="table-light small">Employer</th></tr>
+                  <tr><td>Name</td><td>{{ w.employer_name or '--' }}</td></tr>
+                  <tr><td>EIN</td><td>{{ w.employer_ein or '--' }}</td></tr>
+                  <tr><th colspan="2" class="table-light small">Employee</th></tr>
+                  <tr><td>Name</td><td>{{ w.employee_name or '--' }}</td></tr>
+                </table>
+              </div>
+              <div class="col-md-6">
+                <table class="table table-sm field-table">
+                  <tr><th colspan="2" class="table-light small">Wages &amp; Withholding</th></tr>
+                  <tr><td>Box 1 &mdash; Wages</td><td class="amount">{{ w.box1_wages | fmt_amount }}</td></tr>
+                  <tr><td>Box 2 &mdash; Federal Withheld</td><td class="amount">{{ w.box2_fed_withholding | fmt_amount }}</td></tr>
+                  <tr><td>Box 3 &mdash; SS Wages</td><td class="amount">{{ w.box3_ss_wages | fmt_amount }}</td></tr>
+                  <tr><td>Box 4 &mdash; SS Tax</td><td class="amount">{{ w.box4_ss_tax | fmt_amount }}</td></tr>
+                  <tr><td>Box 5 &mdash; Medicare Wages</td><td class="amount">{{ w.box5_medicare_wages | fmt_amount }}</td></tr>
+                  <tr><td>Box 6 &mdash; Medicare Tax</td><td class="amount">{{ w.box6_medicare_tax | fmt_amount }}</td></tr>
+                  <tr><td>Box 13 &mdash; Retirement Plan</td><td>{{ 'Yes' if w.box13_retirement_plan else 'No' }}</td></tr>
+                  <tr><td>Box 16 &mdash; State Wages</td><td class="amount">{{ w.box16_state_wages | fmt_amount }}</td></tr>
+                  <tr><td>Box 17 &mdash; State Tax</td><td class="amount">{{ w.box17_state_tax | fmt_amount }}</td></tr>
+                </table>
+                {% if w.box12 %}
+                <table class="table table-sm field-table">
+                  <tr><th colspan="2" class="table-light small">Box 12 Codes</th></tr>
+                  {% for code, val in w.box12.items() %}
+                  <tr><td>Code {{ code }}</td><td class="amount">{{ val | fmt_amount }}</td></tr>
+                  {% endfor %}
+                </table>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+
+          {# ── 1099 Brokerage ── #}
+          {% elif pd.doc_type == 'brokerage_1099' %}
+            {% for b in pd.extracted_json.get('brokerage_1099', []) %}
+            <div class="row g-3">
+              <div class="col-md-6">
+                <table class="table table-sm field-table">
+                  <tr><th colspan="2" class="table-light small">Broker: {{ b.broker_name or '--' }}</th></tr>
+                  <tr><th colspan="2" class="table-light small">Dividends (1099-DIV)</th></tr>
+                  <tr><td>Ordinary Dividends</td><td class="amount">{{ b.div_ordinary | fmt_amount }}</td></tr>
+                  <tr><td>Qualified Dividends</td><td class="amount">{{ b.div_qualified | fmt_amount }}</td></tr>
+                  <tr><td>Cap Gain Distributions</td><td class="amount">{{ b.div_cap_gain_distributions | fmt_amount }}</td></tr>
+                  <tr><td>Foreign Tax Paid</td><td class="amount">{{ b.div_foreign_tax_paid | fmt_amount }}</td></tr>
+                </table>
+              </div>
+              <div class="col-md-6">
+                <table class="table table-sm field-table">
+                  <tr><th colspan="2" class="table-light small">Interest (1099-INT)</th></tr>
+                  <tr><td>Interest Income</td><td class="amount">{{ b.int_interest_income | fmt_amount }}</td></tr>
+                  <tr><td>US Treasury Interest</td><td class="amount">{{ b.int_us_treasury | fmt_amount }}</td></tr>
+                  {% if b.b_summary %}
+                  <tr><th colspan="2" class="table-light small">Sales Summary (1099-B)</th></tr>
+                  <tr><td>Proceeds</td><td class="amount">{{ b.b_summary.proceeds | fmt_amount }}</td></tr>
+                  <tr><td>Cost Basis</td><td class="amount">{{ b.b_summary.cost_basis | fmt_amount }}</td></tr>
+                  <tr><td>Wash Sales</td><td class="amount">{{ b.b_summary.wash_sales | fmt_amount }}</td></tr>
+                  <tr><td>Short-Term G/L</td><td class="amount">{{ b.b_summary.short_term_gain_loss | fmt_amount }}</td></tr>
+                  <tr><td>Long-Term G/L</td><td class="amount">{{ b.b_summary.long_term_gain_loss | fmt_amount }}</td></tr>
+                  {% endif %}
+                </table>
+              </div>
+            </div>
+            {# Trade rows -- collapsible #}
+            {% set trades = pd.extracted_json.get('brokerage_1099_trades', []) %}
+            {% if trades %}
+            <div class="mt-2">
+              <button class="btn btn-sm btn-outline-secondary" type="button"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#trades-{{ loop.index }}-{{ pd.upload_id }}">
+                Show {{ trades | length }} trade row{{ 's' if trades | length != 1 }}
+              </button>
+              <div class="collapse mt-2" id="trades-{{ loop.index }}-{{ pd.upload_id }}">
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered small">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Security</th>
+                        <th>Acquired</th>
+                        <th>Sold</th>
+                        <th>Holding</th>
+                        <th class="text-end">Proceeds</th>
+                        <th class="text-end">Cost Basis</th>
+                        <th class="text-end">G/L</th>
+                        <th>8949 Box</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for t in trades %}
+                      <tr>
+                        <td>{{ t.description }}</td>
+                        <td>{{ t.date_acquired or '--' }}</td>
+                        <td>{{ t.date_sold_or_disposed or '--' }}</td>
+                        <td>{{ t.holding_period | title }}</td>
+                        <td class="text-end">{{ t.proceeds_gross | fmt_amount }}</td>
+                        <td class="text-end">{{ t.cost_basis | fmt_amount }}</td>
+                        <td class="text-end {% if t.realized_gain_loss and t.realized_gain_loss < 0 %}text-danger{% endif %}">
+                          {{ t.realized_gain_loss | fmt_amount }}</td>
+                        <td>{{ t.form_8949_box or '--' }}</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+
+          {# ── 1098 ── #}
+          {% elif pd.doc_type == 'form_1098' %}
+            {% for f in pd.extracted_json.get('form_1098', []) %}
+            <table class="table table-sm field-table" style="max-width:480px">
+              <tr><th colspan="2" class="table-light small">Lender: {{ f.lender_name or '--' }}</th></tr>
+              <tr><td>Mortgage Interest</td><td class="amount">{{ f.mortgage_interest_received | fmt_amount }}</td></tr>
+              <tr><td>Points Paid</td><td class="amount">{{ f.points_paid | fmt_amount }}</td></tr>
+              <tr><td>Mortgage Insurance Premiums</td><td class="amount">{{ f.mortgage_insurance_premiums | fmt_amount }}</td></tr>
+              <tr><td>Real Estate Taxes</td><td class="amount">{{ f.real_estate_taxes | fmt_amount }}</td></tr>
+              <tr><td>Outstanding Principal</td><td class="amount">{{ f.mortgage_principal_outstanding | fmt_amount }}</td></tr>
+              {% if f.borrower_names %}
+              <tr><td>Borrowers</td><td>{{ f.borrower_names | join(', ') }}</td></tr>
+              {% endif %}
+            </table>
+            {% endfor %}
+
+          {# ── Unknown ── #}
+          {% else %}
+          <p class="text-muted fst-italic mb-0">Document could not be classified. No fields extracted.</p>
+          {% if pd.parse_error %}
+          <p class="text-danger small mt-1">Error: {{ pd.parse_error }}</p>
+          {% endif %}
+          {% endif %}
+
+        </div>{# card-body #}
+      </div>{# card #}
+      {% endfor %}
+    {% endif %}
+  </div>
+
+  {# ════════════════════════════════════════ TAB 3: Flags & Questions ════ #}
+  <div class="tab-pane fade" id="tab-flags">
+
+    {% if all_flags %}
+    <h6 class="text-muted mb-2 small text-uppercase fw-semibold">Review Flags</h6>
+    <div class="list-group mb-4 shadow-sm">
+      {% for f in all_flags %}
+      <div class="list-group-item list-group-item-{{ 'danger' if f.severity == 'error' else ('warning' if f.severity == 'warning' else 'info') }} d-flex gap-3 align-items-start">
+        <span class="badge bg-{{ 'danger' if f.severity == 'error' else ('warning text-dark' if f.severity == 'warning' else 'info text-dark') }} mt-1">
+          {{ f.severity | upper }}
+        </span>
+        <div>
+          <div class="fw-semibold small">{{ f.type | replace('_', ' ') | title }}</div>
+          <div>{{ f.message }}</div>
+          {% if f.document %}
+          <div class="small text-muted mt-1">Document: {{ f.document }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-success">No flags -- all documents parsed cleanly.</div>
+    {% endif %}
+
+    {% if follow_up %}
+    <h6 class="text-muted mb-2 small text-uppercase fw-semibold">Suggested Follow-Up Questions for Client</h6>
+    <div class="list-group shadow-sm">
+      {% for q in follow_up %}
+      <div class="list-group-item list-group-item-light">&#10067; {{ q }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div>
+
+  {# ════════════════════════════════════════ TAB 4: Year-over-Year ════ #}
+  {% if yoy_rows %}
+  <div class="tab-pane fade" id="tab-yoy">
+    <h6 class="text-muted mb-3 small text-uppercase fw-semibold">
+      {{ year }} vs {{ compare_year }}
+      <span class="fw-normal ms-2" style="text-transform:none">Fields with &gt;20% change are highlighted</span>
+    </h6>
+    <div class="card shadow-sm" style="max-width:640px">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-dark">
+            <tr>
+              <th>Field</th>
+              <th class="text-end">{{ year }}</th>
+              <th class="text-end">{{ compare_year }}</th>
+              <th class="text-end">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in yoy_rows %}
+            <tr class="{{ 'table-warning' if row.highlight }}">
+              <td>{{ row.label }}</td>
+              <td class="text-end">{{ row.current | fmt_amount if row.current is not none else '--' }}</td>
+              <td class="text-end">{{ row.prior | fmt_amount if row.prior is not none else '--' }}</td>
+              <td class="text-end">
+                {% if row.delta_pct is not none %}
+                  <span class="{{ 'text-danger' if row.delta_pct < -0.20 else ('text-success' if row.delta_pct > 0.20 else '') }}">
+                    {{ '%+.1f%%' | format(row.delta_pct * 100) }}
+                  </span>
+                {% else %}
+                  --
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>{# tab-content #}
+{% endblock %}

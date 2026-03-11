@@ -1,0 +1,79 @@
+{% extends "preparer/base.html" %}
+{% set current_year = year %}
+
+{% block title %}Clients — {{ year }} — Tax Preparer Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3 gap-3">
+  <h4 class="mb-0 fw-bold">Clients &mdash; {{ year }}</h4>
+  <span class="text-muted small">{{ clients | length }} client{{ 's' if clients | length != 1 }}</span>
+</div>
+
+{% if not clients %}
+<div class="alert alert-info">No clients found in the portal database for {{ year }}.</div>
+{% else %}
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Client</th>
+          <th>Filing Status</th>
+          <th>Questionnaire</th>
+          <th class="text-center">Docs Received</th>
+          <th class="text-center">Parsed</th>
+          <th class="text-center">Flags</th>
+          <th class="text-center">Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in clients %}
+        <tr>
+          <td class="fw-semibold">{{ c.display_name }}</td>
+          <td class="text-capitalize text-muted">{{ c.filing_status | replace('_', ' ') }}</td>
+          <td>
+            {% if c.questionnaire_completed %}
+              <span class="badge bg-success">Complete</span>
+            {% elif c.doc_count > 0 %}
+              <span class="badge bg-warning text-dark">In Progress</span>
+            {% else %}
+              <span class="badge bg-secondary">Not Started</span>
+            {% endif %}
+          </td>
+          <td class="text-center">{{ c.doc_count }}</td>
+          <td class="text-center">
+            {{ c.parsed_count }}
+            {% if c.pending_count > 0 %}
+              <span class="badge bg-info text-dark ms-1" title="Parsing...">{{ c.pending_count }} pending</span>
+            {% endif %}
+            {% if c.error_doc_count > 0 %}
+              <span class="badge bg-danger ms-1">{{ c.error_doc_count }} failed</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if c.flag_count %}
+              <span class="badge bg-{{ 'danger' if c.error_flag_count else 'warning text-dark' }}">
+                {{ c.flag_count }}
+              </span>
+            {% else %}
+              <span class="text-muted">&mdash;</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            <span class="badge bg-{{ c.status_class }} status-badge">
+              {{ c.status | replace('_', ' ') | title }}
+            </span>
+          </td>
+          <td>
+            <a href="{{ url_for('preparer.client_detail', user_id=c.user_id, year=year) }}"
+               class="btn btn-sm btn-outline-dark">Review &rsaquo;</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

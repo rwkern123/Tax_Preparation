@@ -29,9 +29,15 @@ def create_app(config: dict = None) -> Flask:
     # Ensure upload directory exists
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
+    app.config["PREPARER_DB_PATH"] = str(portal_data / "preparer.db")
+
     from .database import init_db
     with app.app_context():
         init_db(app.config["DB_PATH"])
+
+    # Ensure preparer DB schema exists so parse-on-upload can write immediately
+    from preparer.database import init_preparer_db
+    init_preparer_db(app.config["PREPARER_DB_PATH"])
 
     from .auth import auth_bp
     from .views import portal_bp

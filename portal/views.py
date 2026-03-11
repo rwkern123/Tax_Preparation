@@ -268,10 +268,68 @@ def upload_file(year: int, category: str):
     try:
         upload = _save_upload_file(session["user_id"], year, category, file)
         flash(f"File '{file.filename}' uploaded successfully.", "success")
+        _trigger_parse_on_upload(
+            upload_id=upload["id"],
+            user_id=session["user_id"],
+            tax_year=year,
+            category=category,
+            original_name=upload["original_name"],
+            stored_name=upload["filename"],
+        )
     except Exception as exc:
         flash(f"Upload failed: {exc}", "error")
 
     return redirect(url_for("portal.year_detail", year=year))
+
+
+def _trigger_parse_on_upload(
+    upload_id: int,
+    user_id: int,
+    tax_year: int,
+    category: str,
+    original_name: str,
+    stored_name: str,
+) -> None:
+    """Synchronously parse an uploaded PDF and write results to preparer.db.
+    Non-PDF files are skipped. Parse failures are stored silently — never shown to the client."""
+    file_path = (
+        Path(_upload_folder())
+        / str(user_id)
+        / str(tax_year)
+        / category
+        / stored_name
+    )
+
+    if file_path.suffix.lower() != ".pdf":
+        return
+
+    preparer_db = current_app.config.get("PREPARER_DB_PATH")
+    if not preparer_db:
+        return
+
+    try:
+        from preparer.parser_bridge import parse_uploaded_file
+        from preparer.database import upsert_parsed_document
+
+        result = parse_uploaded_file(str(file_path), use_ocr=False)
+        upsert_parsed_document(
+            db_path=preparer_db,
+            upload_id=upload_id,
+            user_id=user_id,
+            tax_year=tax_year,
+            category=category,
+            original_name=original_name,
+            file_path=str(file_path),
+            doc_type=result["doc_type"],
+            confidence=result["confidence"],
+            parsing_status=result["parsing_status"],
+            parse_error=result["parse_error"],
+            extracted_json=result["extracted"],
+            drake_json=result["drake"],
+            flags=result["flags"],
+        )
+    except Exception:
+        pass  # Never surface parse failures to the client
 
 
 @portal_bp.route("/year/<int:year>/upload/<int:upload_id>/delete", methods=["POST"])

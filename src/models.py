@@ -43,6 +43,7 @@ class W2Data:
     employee_state: Optional[str] = None
     employee_zip: Optional[str] = None
     confidence: float = 0.0
+    extraction_source: str = "local"  # "local" | "azure"
 
 
 @dataclass

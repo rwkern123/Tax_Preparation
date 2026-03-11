@@ -10,5 +10,8 @@ Pillow
 # Web UI
 flask
 
+# Azure Document Intelligence (optional — only needed when using --enable-azure)
+azure-ai-formrecognizer>=3.3.0
+
 # Testing
 pytest

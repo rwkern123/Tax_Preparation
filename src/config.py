@@ -23,3 +23,6 @@ class AppConfig:
     spouse_aliases: tuple[str, ...] = ()
     compare_prior_year: bool = False
     prior_year_root: Path | None = None
+    enable_azure: bool = False
+    azure_endpoint: str | None = None
+    azure_api_key: str | None = None

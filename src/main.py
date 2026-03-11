@@ -18,6 +18,7 @@ from src.extract.form_1099b_trades import (
     trade_to_tax_row,
 )
 from src.extract.form_1098 import parse_1098_text
+from src.extract.azure_w2 import AZURE_CONFIDENCE_THRESHOLD, parse_w2_azure
 from src.extract.generic_pdf import get_document_text
 from src.extract.w2 import parse_w2_text
 from src.compare import build_metrics, generate_comparison_markdown, load_extract
@@ -136,6 +137,23 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
             issuer = None
             if doc_type == "w2":
                 parsed = parse_w2_text(text, fallback_year=config.tax_year)
+                if (
+                    config.enable_azure
+                    and parsed.confidence < AZURE_CONFIDENCE_THRESHOLD
+                    and config.azure_endpoint
+                    and config.azure_api_key
+                ):
+                    local_conf = parsed.confidence
+                    azure_parsed = parse_w2_azure(path, config.azure_endpoint, config.azure_api_key)
+                    if azure_parsed is not None and azure_parsed.confidence >= local_conf:
+                        parsed = azure_parsed
+                        notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
+                    else:
+                        notes.append(
+                            f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
+                        )
+                elif config.enable_azure and parsed.confidence >= AZURE_CONFIDENCE_THRESHOLD:
+                    notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
                 extraction.w2.append(parsed)
                 key_fields = asdict(parsed)
                 issuer = parsed.employer_name
@@ -222,7 +240,15 @@ def parse_args() -> AppConfig:
     p.add_argument("--spouse-alias", action="append", default=[], help="Spouse alias/former name, repeatable")
     p.add_argument("--compare-prior-year", action="store_true", help="Generate prior-year comparison report when prior-year outputs are available")
     p.add_argument("--prior-year-root", help="Root folder containing prior-year client directories")
+    p.add_argument("--enable-azure", action="store_true", help="Enable Azure Document Intelligence for low-confidence W-2s (opt-in)")
+    p.add_argument("--azure-endpoint", help="Azure Document Intelligence endpoint URL (default: AZURE_FORM_RECOGNIZER_ENDPOINT env var)")
+    p.add_argument("--azure-api-key", help="Azure Document Intelligence API key (default: AZURE_FORM_RECOGNIZER_KEY env var)")
     args = p.parse_args()
+
+    import os
+    azure_endpoint = args.azure_endpoint or os.environ.get("AZURE_FORM_RECOGNIZER_ENDPOINT")
+    azure_api_key = args.azure_api_key or os.environ.get("AZURE_FORM_RECOGNIZER_KEY")
+
     return AppConfig(
         root=Path(args.root),
         tax_year=args.year,
@@ -237,6 +263,9 @@ def parse_args() -> AppConfig:
         spouse_aliases=tuple(args.spouse_alias),
         compare_prior_year=args.compare_prior_year,
         prior_year_root=Path(args.prior_year_root) if args.prior_year_root else None,
+        enable_azure=args.enable_azure,
+        azure_endpoint=azure_endpoint,
+        azure_api_key=azure_api_key,
     )
 
 

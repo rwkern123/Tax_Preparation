@@ -316,6 +316,37 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(data.div_ordinary, 1250.00)
         self.assertEqual(data.b_summary["wash_sales"], -125.00)
 
+    def test_parse_brokerage_account_number(self):
+        text = "2024 Schwab Composite 1099\nAccount Number: 3652-3341\nOrdinary dividends 100.00"
+        data = parse_brokerage_1099_text(text)
+        self.assertEqual(data.account_number, "3652-3341")
+
+    def test_parse_brokerage_section_199a(self):
+        text = "2024 Schwab Composite 1099\n5 Section 199A Dividends $ 1.89\nOrdinary dividends 50.00"
+        data = parse_brokerage_1099_text(text)
+        self.assertEqual(data.div_section_199a, 1.89)
+
+    def test_parse_brokerage_section_1256(self):
+        text = (
+            "2024 Schwab Composite 1099\n"
+            "Total of Options Subject to Section 1256 Reporting $ 512.85\n"
+        )
+        data = parse_brokerage_1099_text(text)
+        self.assertEqual(data.section_1256_net_gain_loss, 512.85)
+
+    def test_parse_brokerage_short_term_covered(self):
+        text = (
+            "2024 Schwab Composite 1099\n"
+            "Basis is Reported to the IRS\n"
+            "Total Short-Term      (1,234.56)\n"
+            "Total Long-Term       500.00\n"
+        )
+        data = parse_brokerage_1099_text(text)
+        self.assertEqual(data.b_short_term_covered, -1234.56)
+        self.assertEqual(data.b_long_term_covered, 500.00)
+        self.assertIsNone(data.b_short_term_noncovered)
+        self.assertIsNone(data.b_long_term_noncovered)
+
 
     def test_parse_w2_idms_style(self):
         """IDMS payroll: 'Depress F1 for codes' label, '$' amounts, multi-line employer name."""

@@ -17,6 +17,10 @@ def generate_questions(client: str, data: ExtractionResult) -> str:
     for b in data.brokerage_1099:
         if (b.div_foreign_tax_paid or 0) > 0:
             q.append("- Foreign tax paid was reported. Should we evaluate foreign tax credit eligibility?")
+        if b.section_1256_net_gain_loss is not None:
+            q.append("- Section 1256 (mark-to-market) contracts detected. Confirm all Form 6781 entries are complete.")
+        if (b.div_section_199a or 0) > 0:
+            q.append("- Section 199A dividends reported. Do you want to evaluate the QBI deduction on Form 8995?")
 
 
     if data.brokerage_1099 and not data.brokerage_1099_trades:

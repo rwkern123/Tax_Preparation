@@ -23,12 +23,15 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
         lines.append("1. No W-2 detected; request wage statements if employment income exists.")
     lines.append("")
 
-    lines += ["## C) 1099-DIV/INT entry"]
+    lines += ["## C) 1099 Composite / DIV / INT entry"]
     if data.brokerage_1099:
         idx = 1
         for b in data.brokerage_1099:
+            sec199a_part = (
+                f", Sec199A={_fmt_money(b.div_section_199a)}" if b.div_section_199a is not None else ""
+            )
             lines.append(
-                f"{idx}. Enter 1099-DIV/INT from {b.broker_name or 'Unknown Broker'}: Ordinary={_fmt_money(b.div_ordinary)}, Qualified={_fmt_money(b.div_qualified)}, Interest={_fmt_money(b.int_interest_income)}."
+                f"{idx}. Enter 1099-DIV/INT from {b.broker_name or 'Unknown Broker'}: Ordinary={_fmt_money(b.div_ordinary)}, Qualified={_fmt_money(b.div_qualified)}, Interest={_fmt_money(b.int_interest_income)}{sec199a_part}."
             )
             idx += 1
     else:
@@ -51,6 +54,11 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
         lines.append(
             f"- Trade-level 1099-B extraction produced {len(data.brokerage_1099_trades)} rows; review 1099b_trades_tax.csv and 1099b_reconciliation.json, then tie totals to broker subtotals."
         )
+    for b in data.brokerage_1099:
+        if b.section_1256_net_gain_loss is not None:
+            lines.append(
+                f"- Section 1256 contracts present — enter aggregate gain/loss on Form 6781: {_fmt_money(b.section_1256_net_gain_loss)} ({b.broker_name or 'Unknown Broker'})."
+            )
     lines.append("")
 
     lines += ["## E) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]
@@ -61,6 +69,10 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
             )
     else:
         lines.append("2. Ask whether mortgage interest (Form 1098) applies and request statements if itemizing.")
+    if any((b.div_section_199a or 0) > 0 for b in data.brokerage_1099):
+        lines.append("- Section 199A dividends present — evaluate Form 8995 / QBI deduction.")
+    if any((b.div_foreign_tax_paid or 0) > 0 for b in data.brokerage_1099):
+        lines.append("- Foreign tax paid — evaluate Form 1116 foreign tax credit.")
     lines.append("3. Ask about charitable donations and other itemized deductions.")
     lines.append("")
 

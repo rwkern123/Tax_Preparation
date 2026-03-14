@@ -262,6 +262,18 @@ def save_upload(db_path: str, user_id: int, tax_year: int, category: str,
         conn.close()
 
 
+def update_password(db_path: str, user_id: int, password_hash: str) -> None:
+    conn = get_db(db_path)
+    try:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (password_hash, user_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def delete_upload(db_path: str, upload_id: int, user_id: int) -> dict | None:
     conn = get_db(db_path)
     try:

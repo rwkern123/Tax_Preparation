@@ -6,7 +6,7 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from .database import (
     get_user_by_email, get_user_by_id, create_user,
-    create_spouse, save_code, verify_code
+    create_spouse, save_code, verify_code, update_password
 )
 from .two_factor import generate_code, send_code
 
@@ -239,6 +239,67 @@ def resend_code():
     send_code(user, code, method, _smtp_config())
     flash("A new verification code has been sent.", "success")
     return redirect(url_for("auth.verify"))
+
+
+@auth_bp.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        if not email:
+            flash("Email is required.", "error")
+            return render_template("auth/forgot_password.html", email="")
+
+        user = get_user_by_email(_db_path(), email)
+        if user:
+            code = generate_code()
+            method = user.get("two_fa_method", "email")
+            save_code(_db_path(), user["id"], code, method)
+            send_code(user, code, method, _smtp_config())
+            session["reset_user_id"] = user["id"]
+            session["reset_email"] = user["email"]
+
+        # Always show the same message to avoid email enumeration
+        flash("If an account with that email exists, a reset code has been sent.", "success")
+        return redirect(url_for("auth.reset_password"))
+
+    return render_template("auth/forgot_password.html", email="")
+
+
+@auth_bp.route("/reset-password", methods=["GET", "POST"])
+def reset_password():
+    reset_user_id = session.get("reset_user_id")
+    if not reset_user_id:
+        flash("Please start the password reset process again.", "error")
+        return redirect(url_for("auth.forgot_password"))
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+
+        if not code or len(code) != 6 or not code.isdigit():
+            flash("Please enter a valid 6-digit code.", "error")
+            return render_template("auth/reset_password.html", email=session.get("reset_email"))
+
+        if not password or len(password) < 8:
+            flash("Password must be at least 8 characters.", "error")
+            return render_template("auth/reset_password.html", email=session.get("reset_email"))
+
+        if password != confirm:
+            flash("Passwords do not match.", "error")
+            return render_template("auth/reset_password.html", email=session.get("reset_email"))
+
+        if not verify_code(_db_path(), reset_user_id, code):
+            flash("Invalid or expired code. Please try again.", "error")
+            return render_template("auth/reset_password.html", email=session.get("reset_email"))
+
+        update_password(_db_path(), reset_user_id, generate_password_hash(password))
+        session.pop("reset_user_id", None)
+        session.pop("reset_email", None)
+        flash("Password updated successfully. Please log in.", "success")
+        return redirect(url_for("auth.login"))
+
+    return render_template("auth/reset_password.html", email=session.get("reset_email"))
 
 
 @auth_bp.route("/logout")

@@ -152,6 +152,16 @@
                     <input type="hidden" name="ocr" value="1">
                     <button class="btn btn-xs btn-outline-primary" title="Re-parse with OCR">OCR</button>
                   </form>
+                  {% if azure_configured and upload.doc_type in ('w2', 'brokerage_1099') %}
+                  <form method="post"
+                        action="{{ url_for('preparer.azure_enhance', user_id=user.id, upload_id=upload.upload_id) }}"
+                        class="d-inline ms-1">
+                    <input type="hidden" name="year" value="{{ year }}">
+                    <button class="btn btn-xs btn-outline-success" title="Enhance with Azure Document Intelligence">
+                      &#9889; Azure
+                    </button>
+                  </form>
+                  {% endif %}
                   {% endif %}
                 </td>
               </tr>

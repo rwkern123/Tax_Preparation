@@ -10,6 +10,7 @@ from .database import (
     get_parsed_documents,
     get_parsed_document_by_upload_id,
     reparse_document,
+    reparse_document_azure,
 )
 
 preparer_bp = Blueprint(
@@ -255,6 +256,14 @@ def client_detail(user_id: int):
         prior_parsed = get_parsed_documents(_preparer_db(), user_id, compare_year)
         yoy_rows     = _compute_yoy_comparison(parsed_docs, prior_parsed)
 
+    from . import site_config
+    cfg = site_config.load()
+    azure_configured = bool(
+        cfg.get("azure_enabled")
+        and cfg.get("azure_endpoint")
+        and cfg.get("azure_api_key")
+    )
+
     return render_template(
         "preparer/client_detail.html",
         user=user,
@@ -267,6 +276,7 @@ def client_detail(user_id: int):
         follow_up=follow_up,
         questionnaire=qr,
         yoy_rows=yoy_rows,
+        azure_configured=azure_configured,
     )
 
 
@@ -278,5 +288,54 @@ def reparse(user_id: int, upload_id: int):
     year = int(request.form.get("year", CURRENT_YEAR))
     flash("Document re-parsed.", "success")
     return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+
+@preparer_bp.route("/client/<int:user_id>/azure-enhance/<int:upload_id>", methods=["POST"])
+@login_required
+def azure_enhance(user_id: int, upload_id: int):
+    from . import site_config
+    cfg = site_config.load()
+    endpoint = cfg.get("azure_endpoint", "")
+    api_key  = cfg.get("azure_api_key", "")
+    year     = int(request.form.get("year", CURRENT_YEAR))
+
+    if not (cfg.get("azure_enabled") and endpoint and api_key):
+        flash("Azure is not configured. Please update Settings first.", "error")
+        return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+    try:
+        reparse_document_azure(_preparer_db(), upload_id, endpoint=endpoint, api_key=api_key)
+        flash("Document enhanced with Azure Document Intelligence.", "success")
+    except Exception as exc:
+        flash(f"Azure enhancement failed: {exc}", "error")
+
+    return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+@preparer_bp.route("/settings", methods=["GET"])
+@login_required
+def settings():
+    from . import site_config
+    cfg = site_config.load()
+    return render_template("preparer/settings.html", cfg=cfg)
+
+
+@preparer_bp.route("/settings", methods=["POST"])
+@login_required
+def settings_save():
+    from . import site_config
+    site_config.save({
+        "tax_year":       int(request.form.get("tax_year", 2024)),
+        "root_folder":    request.form.get("root_folder", "").strip(),
+        "azure_endpoint": request.form.get("azure_endpoint", "").strip(),
+        "azure_api_key":  request.form.get("azure_api_key", "").strip(),
+        "azure_enabled":  request.form.get("azure_enabled") == "1",
+    })
+    flash("Settings saved.", "success")
+    return redirect(url_for("preparer.settings"))
 
 

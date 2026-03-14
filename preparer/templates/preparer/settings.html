@@ -1,0 +1,90 @@
+{% extends "preparer/base.html" %}
+
+{% block title %}Settings — Tax Preparer Dashboard{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+
+    <h4 class="fw-bold mb-4">Settings</h4>
+
+    <form method="post" action="{{ url_for('preparer.settings_save') }}">
+
+      <!-- General -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header fw-semibold">General</div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label for="tax_year" class="form-label">Default Tax Year</label>
+            <select name="tax_year" id="tax_year" class="form-select" style="width:140px">
+              {% for y in [2022, 2023, 2024, 2025] %}
+              <option value="{{ y }}" {% if y == cfg.tax_year %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Used as the default year when the dashboard loads.</div>
+          </div>
+
+          <div class="mb-1">
+            <label for="root_folder" class="form-label">Client Folder Root</label>
+            <input type="text" class="form-control font-monospace"
+                   id="root_folder" name="root_folder"
+                   value="{{ cfg.root_folder }}"
+                   placeholder="e.g. C:\TaxClients\2024">
+            <div class="form-text">
+              The top-level folder that contains all of your client subfolders.
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Azure -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header fw-semibold">Azure Document Intelligence <span class="badge bg-secondary ms-1">Optional</span></div>
+        <div class="card-body">
+
+          <p class="text-muted small mb-3">
+            When enabled, documents that the local parser reads with low confidence
+            are automatically re-processed using Microsoft Azure for better accuracy.
+            Leave blank if you are not using Azure.
+          </p>
+
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch"
+                   id="azure_enabled" name="azure_enabled" value="1"
+                   {% if cfg.azure_enabled %}checked{% endif %}>
+            <label class="form-check-label" for="azure_enabled">Enable Azure fallback</label>
+          </div>
+
+          <div class="mb-3">
+            <label for="azure_endpoint" class="form-label">Endpoint URL</label>
+            <input type="url" class="form-control font-monospace"
+                   id="azure_endpoint" name="azure_endpoint"
+                   value="{{ cfg.azure_endpoint }}"
+                   placeholder="https://your-resource.cognitiveservices.azure.com/">
+          </div>
+
+          <div class="mb-1">
+            <label for="azure_api_key" class="form-label">API Key</label>
+            <input type="password" class="form-control font-monospace"
+                   id="azure_api_key" name="azure_api_key"
+                   value="{{ cfg.azure_api_key }}"
+                   placeholder="Paste your Azure key here">
+            <div class="form-text">
+              Stored locally in <code>app_config.json</code> — never sent anywhere except Azure.
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-dark">Save Settings</button>
+        <a href="{{ url_for('preparer.client_list') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}

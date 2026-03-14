@@ -78,6 +78,90 @@ def parse_uploaded_file(file_path: str, use_ocr: bool = False) -> dict:
         }
 
 
+def azure_parse_uploaded_file(
+    file_path: str,
+    endpoint: str,
+    api_key: str,
+    doc_type_hint: str = "unknown",
+) -> dict:
+    """
+    Re-parse a single file using Azure Document Intelligence and return a
+    normalized result dict in the same shape as parse_uploaded_file().
+
+    If the azure-ai-formrecognizer SDK is not installed, it is installed
+    automatically before proceeding.
+    """
+    # Auto-install the SDK if missing
+    try:
+        import azure.ai.formrecognizer  # noqa: F401
+    except ImportError:
+        import subprocess, sys
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "azure-ai-formrecognizer"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    path = Path(file_path)
+    try:
+        if doc_type_hint == "w2":
+            from src.extract.azure_w2 import parse_w2_azure
+            result = parse_w2_azure(path, endpoint, api_key)
+            if result is None:
+                raise RuntimeError("Azure returned no result for this document.")
+            from dataclasses import asdict
+            extracted = {"w2": [asdict(result)]}
+            doc_type = "w2"
+            confidence = result.confidence
+
+        elif doc_type_hint == "brokerage_1099":
+            from src.extract.azure_1099 import parse_brokerage_1099_azure
+            result = parse_brokerage_1099_azure(path, endpoint, api_key)
+            if result is None:
+                raise RuntimeError("Azure returned no result for this document.")
+            from dataclasses import asdict
+            extracted = {"brokerage_1099": [asdict(result)]}
+            doc_type = "brokerage_1099"
+            confidence = result.confidence
+
+        else:
+            raise RuntimeError(
+                f"Azure enhancement is only available for W-2 and brokerage 1099 documents "
+                f"(this document is classified as '{doc_type_hint}')."
+            )
+
+        drake = _to_drake_fields(doc_type, extracted)
+        flags = _generate_flags(doc_type, confidence, extracted)
+
+        return {
+            "doc_type": doc_type,
+            "confidence": confidence,
+            "parsing_status": "done",
+            "parse_error": None,
+            "extracted": extracted,
+            "drake": drake,
+            "flags": flags,
+        }
+
+    except Exception as exc:
+        return {
+            "doc_type": doc_type_hint if doc_type_hint != "unknown" else "unknown",
+            "confidence": 0.0,
+            "parsing_status": "failed",
+            "parse_error": str(exc),
+            "extracted": {},
+            "drake": {},
+            "flags": [
+                {
+                    "type": "parse_error",
+                    "severity": "error",
+                    "message": f"Azure parsing failed: {exc}",
+                    "field": None,
+                }
+            ],
+        }
+
+
 def _to_drake_fields(doc_type: str, extracted: dict) -> dict:
     """Map extracted fields to stable Drake-compatible field names for Phase 2 RPA."""
     if doc_type == "w2" and extracted.get("w2"):

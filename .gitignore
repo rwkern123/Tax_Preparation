@@ -11,6 +11,9 @@ env/
 # Local data — databases and uploaded files (contain PII)
 portal_data/
 
+# Local app config — contains Azure API key and client folder path
+app_config.json
+
 # OS / editor
 .DS_Store
 Thumbs.db

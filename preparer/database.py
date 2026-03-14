@@ -159,6 +159,52 @@ def reparse_document(db_path: str, upload_id: int, use_ocr: bool = False) -> Non
     )
 
 
+def reparse_document_azure(
+    db_path: str,
+    upload_id: int,
+    endpoint: str,
+    api_key: str,
+) -> None:
+    """Re-parse a document using Azure Document Intelligence."""
+    conn = _get_db(db_path)
+    try:
+        row = conn.execute(
+            "SELECT file_path, user_id, tax_year, category, original_name, doc_type "
+            "FROM parsed_documents WHERE upload_id = ?",
+            (upload_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return
+
+    from .parser_bridge import azure_parse_uploaded_file
+
+    result = azure_parse_uploaded_file(
+        row["file_path"],
+        endpoint=endpoint,
+        api_key=api_key,
+        doc_type_hint=row["doc_type"],
+    )
+    upsert_parsed_document(
+        db_path=db_path,
+        upload_id=upload_id,
+        user_id=row["user_id"],
+        tax_year=row["tax_year"],
+        category=row["category"],
+        original_name=row["original_name"],
+        file_path=row["file_path"],
+        doc_type=result["doc_type"],
+        confidence=result["confidence"],
+        parsing_status=result["parsing_status"],
+        parse_error=result["parse_error"],
+        extracted_json=result["extracted"],
+        drake_json=result["drake"],
+        flags=result["flags"],
+    )
+
+
 def get_preparer_client_list(
     portal_db: str, preparer_db: str, tax_year: int
 ) -> list[dict]:

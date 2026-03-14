@@ -20,6 +20,11 @@ def create_app(config: dict = None) -> Flask:
     # Set via env var PREPARER_PASSWORD before first run
     app.config["PREPARER_PASSWORD"] = os.environ.get("PREPARER_PASSWORD", "changeme")
 
+    # Load persistent site config (root folder, tax year, Azure credentials)
+    from .site_config import load as load_site_config
+    site_cfg = load_site_config()
+    app.config["SITE_CONFIG"] = site_cfg
+
     if config:
         app.config.update(config)
 

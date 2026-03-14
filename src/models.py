@@ -65,6 +65,7 @@ class Brokerage1099Data:
     b_long_term_noncovered: Optional[float] = None
     b_summary: Dict[str, Optional[float]] = field(default_factory=dict)
     confidence: float = 0.0
+    extraction_source: str = "local"  # "local" | "azure"
 
     def __post_init__(self) -> None:
         # Populate b_summary covered/noncovered breakdown from the typed fields so

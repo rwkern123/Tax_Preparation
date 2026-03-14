@@ -19,6 +19,7 @@ from src.extract.form_1099b_trades import (
 )
 from src.extract.form_1098 import parse_1098_text
 from src.extract.azure_w2 import AZURE_CONFIDENCE_THRESHOLD, parse_w2_azure
+from src.extract.azure_1099 import AZURE_CONFIDENCE_THRESHOLD as _1099_AZURE_THRESH, parse_brokerage_1099_azure
 from src.extract.generic_pdf import get_document_text
 from src.extract.w2 import parse_w2_text
 from src.compare import build_metrics, generate_comparison_markdown, load_extract
@@ -159,6 +160,23 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
                 issuer = parsed.employer_name
             elif doc_type == "brokerage_1099":
                 parsed = parse_brokerage_1099_text(text)
+                if (
+                    config.enable_azure
+                    and parsed.confidence < _1099_AZURE_THRESH
+                    and config.azure_endpoint
+                    and config.azure_api_key
+                ):
+                    local_conf = parsed.confidence
+                    azure_parsed = parse_brokerage_1099_azure(path, config.azure_endpoint, config.azure_api_key)
+                    if azure_parsed is not None and azure_parsed.confidence >= local_conf:
+                        parsed = azure_parsed
+                        notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
+                    else:
+                        notes.append(
+                            f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
+                        )
+                elif config.enable_azure and parsed.confidence >= _1099_AZURE_THRESH:
+                    notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
                 extraction.brokerage_1099.append(parsed)
                 trades, trade_diag = parse_1099b_trades_text(text, parsed.broker_name, path.name, row["sha256"])
                 extraction.brokerage_1099_trades.extend(trades)

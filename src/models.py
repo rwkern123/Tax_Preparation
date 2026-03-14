@@ -49,15 +49,35 @@ class W2Data:
 @dataclass
 class Brokerage1099Data:
     broker_name: Optional[str] = None
+    account_number: Optional[str] = None
     year: Optional[int] = None
     div_ordinary: Optional[float] = None
     div_qualified: Optional[float] = None
     div_cap_gain_distributions: Optional[float] = None
     div_foreign_tax_paid: Optional[float] = None
+    div_section_199a: Optional[float] = None
     int_interest_income: Optional[float] = None
     int_us_treasury: Optional[float] = None
+    section_1256_net_gain_loss: Optional[float] = None
+    b_short_term_covered: Optional[float] = None
+    b_short_term_noncovered: Optional[float] = None
+    b_long_term_covered: Optional[float] = None
+    b_long_term_noncovered: Optional[float] = None
     b_summary: Dict[str, Optional[float]] = field(default_factory=dict)
     confidence: float = 0.0
+
+    def __post_init__(self) -> None:
+        # Populate b_summary covered/noncovered breakdown from the typed fields so
+        # downstream consumers that read b_summary continue to work unchanged.
+        covered_map = {
+            "short_term_covered": self.b_short_term_covered,
+            "short_term_noncovered": self.b_short_term_noncovered,
+            "long_term_covered": self.b_long_term_covered,
+            "long_term_noncovered": self.b_long_term_noncovered,
+        }
+        for key, value in covered_map.items():
+            if value is not None and key not in self.b_summary:
+                self.b_summary[key] = value
 
 
 @dataclass

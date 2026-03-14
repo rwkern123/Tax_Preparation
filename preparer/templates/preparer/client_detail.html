@@ -57,6 +57,18 @@
       {% if all_flags %}<span class="badge bg-danger ms-1">{{ all_flags | length }}</span>{% endif %}
     </button>
   </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-questionnaire">
+      Questionnaire
+      {% if questionnaire and questionnaire.completed %}
+        <span class="badge bg-success ms-1">Complete</span>
+      {% elif questionnaire %}
+        <span class="badge bg-warning text-dark ms-1">In Progress</span>
+      {% else %}
+        <span class="badge bg-secondary ms-1">Not Started</span>
+      {% endif %}
+    </button>
+  </li>
   {% if yoy_rows %}
   <li class="nav-item">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-yoy">Year-over-Year</button>
@@ -195,7 +207,14 @@
       <div class="card shadow-sm mb-3">
         <div class="card-header d-flex align-items-center gap-2 flex-wrap">
           <span class="badge bg-dark">{{ pd.doc_type | replace('_', ' ') | title }}</span>
+          {% if pd.file_path %}
+          <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
+             target="_blank" class="fw-semibold text-decoration-none">
+            {{ pd.original_name }} &#8599;
+          </a>
+          {% else %}
           <span class="fw-semibold">{{ pd.original_name }}</span>
+          {% endif %}
           <span class="ms-auto d-flex align-items-center gap-2">
             <span class="small text-muted">Confidence:</span>
             <div class="conf-bar-wrap" style="width:100px">
@@ -431,6 +450,62 @@
     </div>
   </div>
   {% endif %}
+
+  {# ════════════════════════════════════════ TAB: Questionnaire ════ #}
+  <div class="tab-pane fade" id="tab-questionnaire">
+    {% if not questionnaire %}
+      <div class="alert alert-info">The client has not started the questionnaire yet.</div>
+    {% else %}
+      {% set answers = questionnaire.answers %}
+      {% for section in questionnaire_sections %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-header fw-semibold">{{ section.title }}</div>
+        <div class="card-body p-0">
+          <table class="table table-sm align-middle mb-0">
+            <tbody>
+              {% for q in section.questions %}
+                {% if q.type != 'dependents' %}
+                {% set ans = answers.get(q.id) %}
+                <tr>
+                  <td class="ps-3" style="width:70%">{{ q.label }}</td>
+                  <td>
+                    {% if ans == 'yes' %}
+                      <span class="badge bg-success">Yes</span>
+                    {% elif ans == 'no' %}
+                      <span class="badge bg-secondary">No</span>
+                    {% else %}
+                      <span class="text-muted small fst-italic">Not answered</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% else %}
+                  {# Dependents list #}
+                  {% set deps = answers.get('dependents_list', []) %}
+                  {% if deps %}
+                  <tr>
+                    <td class="ps-3" colspan="2">
+                      <span class="fw-semibold small">Dependents:</span>
+                      <ul class="mb-0 mt-1">
+                        {% for d in deps %}
+                        <li class="small">
+                          {{ d.get('first_name', '') }} {{ d.get('last_name', '') }}
+                          {% if d.get('dob') %}&mdash; DOB {{ d.dob }}{% endif %}
+                          {% if d.get('relationship') %}&mdash; {{ d.relationship | title }}{% endif %}
+                        </li>
+                        {% endfor %}
+                      </ul>
+                    </td>
+                  </tr>
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+    {% endif %}
+  </div>
 
 </div>{# tab-content #}
 {% endblock %}

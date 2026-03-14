@@ -257,12 +257,15 @@ def client_detail(user_id: int):
         yoy_rows     = _compute_yoy_comparison(parsed_docs, prior_parsed)
 
     from . import site_config
+    from portal.questionnaire import QUESTIONNAIRE_SECTIONS, get_section_for_filing_status
     cfg = site_config.load()
     azure_configured = bool(
         cfg.get("azure_enabled")
         and cfg.get("azure_endpoint")
         and cfg.get("azure_api_key")
     )
+    filing_status = user.get("filing_status", "single")
+    questionnaire_sections = get_section_for_filing_status(QUESTIONNAIRE_SECTIONS, filing_status)
 
     return render_template(
         "preparer/client_detail.html",
@@ -275,6 +278,7 @@ def client_detail(user_id: int):
         all_flags=all_flags,
         follow_up=follow_up,
         questionnaire=qr,
+        questionnaire_sections=questionnaire_sections,
         yoy_rows=yoy_rows,
         azure_configured=azure_configured,
     )
@@ -310,6 +314,25 @@ def azure_enhance(user_id: int, upload_id: int):
         flash(f"Azure enhancement failed: {exc}", "error")
 
     return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+
+# ---------------------------------------------------------------------------
+# File viewer
+# ---------------------------------------------------------------------------
+
+@preparer_bp.route("/uploads/<int:upload_id>")
+@login_required
+def view_upload(upload_id: int):
+    from flask import send_file
+    doc = get_parsed_document_by_upload_id(_preparer_db(), upload_id)
+    if not doc or not doc.get("file_path"):
+        flash("File not found or not available for this document.", "error")
+        return redirect(request.referrer or url_for("preparer.client_list"))
+    file_path = Path(doc["file_path"])
+    if not file_path.exists():
+        flash(f"File not found on disk: {file_path.name}", "error")
+        return redirect(request.referrer or url_for("preparer.client_list"))
+    return send_file(file_path, as_attachment=False, download_name=doc["original_name"])
 
 
 # ---------------------------------------------------------------------------

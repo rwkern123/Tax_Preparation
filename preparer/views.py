@@ -240,15 +240,6 @@ def client_detail(user_id: int):
     expected_docs = get_required_documents(answers, filing_status)
     doc_status    = _build_doc_status(expected_docs, uploads, parsed_docs)
 
-    # Determine which brokerage sub-categories are covered by a composite upload
-    _BROKERAGE_SUB_CATS = {"1099_INT", "1099_DIV", "1099_B"}
-    brokerage_covered_by_composite: set[str] = set()
-    for pd in parsed_docs:
-        if pd["doc_type"] == "brokerage_1099":
-            if pd["category"] in _BROKERAGE_SUB_CATS or pd["category"] == "Brokerage_1099":
-                brokerage_covered_by_composite.update(_BROKERAGE_SUB_CATS)
-                brokerage_covered_by_composite.add("Brokerage_1099")
-
     # Flatten all flags across parsed docs
     all_flags: list[dict] = []
     for pd in parsed_docs:
@@ -296,7 +287,6 @@ def client_detail(user_id: int):
         questionnaire_sections=questionnaire_sections,
         yoy_rows=yoy_rows,
         azure_configured=azure_configured,
-        brokerage_covered_by_composite=brokerage_covered_by_composite,
     )
 
 

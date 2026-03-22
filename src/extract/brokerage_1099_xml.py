@@ -219,4 +219,39 @@ def parse_brokerage_1099_xml(
         )
         trades.append(trade)
 
+    # Compute b_summary totals from trade rows (XML files don't have a separate summary section)
+    if trades:
+        total_proceeds = round(sum(t.proceeds_gross or 0.0 for t in trades), 2)
+        total_cost = round(sum(t.cost_basis or 0.0 for t in trades), 2)
+        total_wash = round(sum(t.wash_sale_amount or 0.0 for t in trades), 2)
+
+        st_covered = round(sum(
+            (t.realized_gain_loss or 0.0) for t in trades
+            if t.holding_period == "short" and t.basis_reported_to_irs == "covered"
+        ), 2)
+        st_noncovered = round(sum(
+            (t.realized_gain_loss or 0.0) for t in trades
+            if t.holding_period == "short" and t.basis_reported_to_irs == "noncovered"
+        ), 2)
+        lt_covered = round(sum(
+            (t.realized_gain_loss or 0.0) for t in trades
+            if t.holding_period == "long" and t.basis_reported_to_irs == "covered"
+        ), 2)
+        lt_noncovered = round(sum(
+            (t.realized_gain_loss or 0.0) for t in trades
+            if t.holding_period == "long" and t.basis_reported_to_irs == "noncovered"
+        ), 2)
+
+        data.b_summary = {
+            "proceeds": total_proceeds,
+            "cost_basis": total_cost,
+            "wash_sales": total_wash if total_wash else None,
+            "short_term_gain_loss": round(st_covered + st_noncovered, 2),
+            "long_term_gain_loss": round(lt_covered + lt_noncovered, 2),
+        }
+        data.b_short_term_covered = st_covered if st_covered != 0.0 else None
+        data.b_short_term_noncovered = st_noncovered if st_noncovered != 0.0 else None
+        data.b_long_term_covered = lt_covered if lt_covered != 0.0 else None
+        data.b_long_term_noncovered = lt_noncovered if lt_noncovered != 0.0 else None
+
     return data, trades

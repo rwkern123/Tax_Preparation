@@ -203,23 +203,15 @@
                 {% if doc.required %}<span class="text-danger fw-bold">Yes</span>{% else %}<span class="text-muted">No</span>{% endif %}
               </td>
               <td class="text-center">
-                {% if doc.category in brokerage_covered_by_composite %}
-                  <span class="text-info" title="Covered by a composite brokerage PDF">&#9432;</span>
-                {% else %}
-                  <span class="text-danger">&#10007;</span>
-                {% endif %}
+                <span class="text-danger">&#10007;</span>
               </td>
               <td colspan="5">
-                {% if doc.category in brokerage_covered_by_composite %}
-                  <span class="badge bg-info text-dark">Covered by composite brokerage PDF</span>
-                {% else %}
                 <form method="post" enctype="multipart/form-data"
                       action="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}"
                       class="d-flex align-items-center gap-2">
                   <input type="file" name="file" class="form-control form-control-sm" style="max-width:280px">
                   <button type="submit" class="btn btn-xs btn-outline-dark text-nowrap">Upload</button>
                 </form>
-                {% endif %}
               </td>
             </tr>
             {% endif %}

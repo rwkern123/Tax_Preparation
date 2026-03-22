@@ -7,6 +7,7 @@
 <div class="d-flex align-items-center mb-3 gap-3">
   <h4 class="mb-0 fw-bold">Clients &mdash; {{ year }}</h4>
   <span class="text-muted small">{{ clients | length }} client{{ 's' if clients | length != 1 }}</span>
+  <a href="{{ url_for('preparer.add_client') }}" class="btn btn-dark btn-sm ms-auto">+ Add Client</a>
 </div>
 
 {% if not clients %}

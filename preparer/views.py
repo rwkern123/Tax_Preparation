@@ -339,6 +339,53 @@ def view_upload(upload_id: int):
 # Settings
 # ---------------------------------------------------------------------------
 
+@preparer_bp.route("/add-client", methods=["GET"])
+@login_required
+def add_client():
+    return render_template("preparer/add_client.html")
+
+
+@preparer_bp.route("/add-client", methods=["POST"])
+@login_required
+def add_client_save():
+    from portal.database import create_user, create_spouse, get_user_by_email
+    from werkzeug.security import generate_password_hash
+
+    first         = request.form.get("first_name", "").strip()
+    last          = request.form.get("last_name", "").strip()
+    filing_status = request.form.get("filing_status", "single")
+    phone         = request.form.get("phone", "").strip()
+    email         = request.form.get("email", "").strip()
+
+    if not first or not last:
+        flash("First name and last name are required.", "error")
+        return redirect(url_for("preparer.add_client"))
+
+    if not email:
+        email = f"{first.lower()}.{last.lower()}@preparer.local"
+
+    if get_user_by_email(_portal_db(), email):
+        flash("A client with that email already exists.", "error")
+        return redirect(url_for("preparer.add_client"))
+
+    pw_hash = generate_password_hash("changeme")
+    user_id = create_user(
+        _portal_db(), email=email, phone=phone, password_hash=pw_hash,
+        first_name=first, last_name=last, dob="", ssn="",
+        address="", city="", state="", zip_code="",
+        filing_status=filing_status, two_fa_method="email",
+    )
+
+    if filing_status in ("mfj", "mfs"):
+        sp_first = request.form.get("spouse_first_name", "").strip()
+        sp_last  = request.form.get("spouse_last_name", last).strip()
+        if sp_first:
+            create_spouse(_portal_db(), user_id, sp_first, sp_last, dob="", ssn="")
+
+    flash(f"Client {first} {last} added.", "success")
+    return redirect(url_for("preparer.client_detail", user_id=user_id))
+
+
 @preparer_bp.route("/import-clients", methods=["POST"])
 @login_required
 def import_clients():

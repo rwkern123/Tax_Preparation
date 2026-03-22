@@ -1,0 +1,137 @@
+{% extends "preparer/base.html" %}
+
+{% block title %}Questionnaire — {{ user.first_name }} {{ user.last_name }} — {{ year }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    <div class="d-flex align-items-center mb-4 gap-3">
+      <a href="{{ url_for('preparer.client_detail', user_id=user.id, year=year) }}"
+         class="btn btn-outline-secondary btn-sm">&larr; Back</a>
+      <h4 class="fw-bold mb-0">
+        Questionnaire &mdash; {{ user.first_name }} {{ user.last_name }} &mdash; TY {{ year }}
+      </h4>
+    </div>
+
+    <form method="post"
+          action="{{ url_for('preparer.save_questionnaire_for_client', user_id=user.id, year=year) }}">
+
+      {% for section in sections %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-header fw-semibold">{{ section.title }}</div>
+        <div class="card-body">
+          {% for q in section.questions %}
+            {% if q.type == 'yes_no' %}
+            <div class="mb-3">
+              <label class="form-label">{{ q.label }}</label>
+              <div class="d-flex gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="{{ q.id }}"
+                         id="{{ q.id }}_yes" value="yes"
+                         {% if answers.get(q.id) == 'yes' %}checked{% endif %}>
+                  <label class="form-check-label" for="{{ q.id }}_yes">Yes</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="{{ q.id }}"
+                         id="{{ q.id }}_no" value="no"
+                         {% if answers.get(q.id) == 'no' %}checked{% endif %}>
+                  <label class="form-check-label" for="{{ q.id }}_no">No</label>
+                </div>
+              </div>
+            </div>
+
+            {% elif q.type == 'dependents' %}
+            <div class="mb-3">
+              <label class="form-label">{{ q.label }}</label>
+              <div id="dependents-list" class="mb-2">
+                {% set deps = answers.get(q.id, []) %}
+                {% if deps %}
+                  {% for dep in deps %}
+                  <div class="d-flex gap-2 mb-1 dependent-row">
+                    <input type="text" class="form-control form-control-sm dep-name" placeholder="Name" value="{{ dep.name or '' }}">
+                    <input type="text" class="form-control form-control-sm dep-rel" placeholder="Relationship" value="{{ dep.relationship or '' }}" style="width:140px">
+                    <input type="text" class="form-control form-control-sm dep-dob" placeholder="DOB" value="{{ dep.dob or '' }}" style="width:110px">
+                    <button type="button" class="btn btn-xs btn-outline-danger" onclick="this.closest('.dependent-row').remove(); updateDepsJson();">&times;</button>
+                  </div>
+                  {% endfor %}
+                {% endif %}
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addDependent()">+ Add Dependent</button>
+              <input type="hidden" name="{{ q.id }}_json" id="{{ q.id }}_json"
+                     value="{{ answers.get(q.id, []) | tojson }}">
+            </div>
+
+            {% elif q.type in ('text', 'number') %}
+            <div class="mb-3">
+              <label class="form-label" for="{{ q.id }}">{{ q.label }}</label>
+              <input type="{{ q.type }}" class="form-control" id="{{ q.id }}" name="{{ q.id }}"
+                     value="{{ answers.get(q.id, '') }}" style="max-width:300px">
+            </div>
+
+            {% elif q.type == 'select' %}
+            <div class="mb-3">
+              <label class="form-label" for="{{ q.id }}">{{ q.label }}</label>
+              <select class="form-select" id="{{ q.id }}" name="{{ q.id }}" style="max-width:300px">
+                <option value=""></option>
+                {% for opt in q.get('options', []) %}
+                <option value="{{ opt }}" {% if answers.get(q.id) == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+
+      <div class="d-flex gap-2 mb-5">
+        <button type="submit" name="action" value="save" class="btn btn-outline-dark">Save Draft</button>
+        <button type="submit" name="action" value="complete" class="btn btn-dark">Save &amp; Mark Complete</button>
+        <a href="{{ url_for('preparer.client_detail', user_id=user.id, year=year) }}"
+           class="btn btn-outline-secondary">Cancel</a>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script>
+function addDependent() {
+  const list = document.getElementById('dependents-list');
+  const row = document.createElement('div');
+  row.className = 'd-flex gap-2 mb-1 dependent-row';
+  row.innerHTML = `
+    <input type="text" class="form-control form-control-sm dep-name" placeholder="Name">
+    <input type="text" class="form-control form-control-sm dep-rel" placeholder="Relationship" style="width:140px">
+    <input type="text" class="form-control form-control-sm dep-dob" placeholder="DOB" style="width:110px">
+    <button type="button" class="btn btn-xs btn-outline-danger"
+            onclick="this.closest('.dependent-row').remove(); updateDepsJson();">&times;</button>
+  `;
+  list.appendChild(row);
+}
+
+function updateDepsJson() {
+  const rows = document.querySelectorAll('.dependent-row');
+  const deps = Array.from(rows).map(r => ({
+    name: r.querySelector('.dep-name').value,
+    relationship: r.querySelector('.dep-rel').value,
+    dob: r.querySelector('.dep-dob').value,
+  })).filter(d => d.name);
+  const input = document.querySelector('[id$="_json"]');
+  if (input) input.value = JSON.stringify(deps);
+}
+
+// Keep hidden JSON in sync on input changes
+document.addEventListener('input', function(e) {
+  if (e.target.classList.contains('dep-name') ||
+      e.target.classList.contains('dep-rel') ||
+      e.target.classList.contains('dep-dob')) {
+    updateDepsJson();
+  }
+});
+
+// Sync before submit
+document.querySelector('form').addEventListener('submit', updateDepsJson);
+</script>
+{% endblock %}

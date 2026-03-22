@@ -178,6 +178,16 @@
                 </td>
               </tr>
               {% endfor %}
+            <tr>
+              <td colspan="8" class="py-1">
+                <form method="post" enctype="multipart/form-data"
+                      action="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}"
+                      class="d-flex align-items-center gap-2">
+                  <input type="file" name="file" class="form-control form-control-sm" style="max-width:280px">
+                  <button type="submit" class="btn btn-xs btn-outline-secondary text-nowrap">+ Add file</button>
+                </form>
+              </td>
+            </tr>
             {% else %}
             <tr>
               <td class="fw-semibold">
@@ -187,7 +197,14 @@
                 {% if doc.required %}<span class="text-danger fw-bold">Yes</span>{% else %}<span class="text-muted">No</span>{% endif %}
               </td>
               <td class="text-center"><span class="text-danger">&#10007;</span></td>
-              <td colspan="5" class="text-muted small fst-italic">No file uploaded</td>
+              <td colspan="5">
+                <form method="post" enctype="multipart/form-data"
+                      action="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}"
+                      class="d-flex align-items-center gap-2">
+                  <input type="file" name="file" class="form-control form-control-sm" style="max-width:280px">
+                  <button type="submit" class="btn btn-xs btn-outline-dark text-nowrap">Upload</button>
+                </form>
+              </td>
             </tr>
             {% endif %}
             {% endfor %}
@@ -453,8 +470,12 @@
 
   {# ════════════════════════════════════════ TAB: Questionnaire ════ #}
   <div class="tab-pane fade" id="tab-questionnaire">
+    <div class="mb-3">
+      <a href="{{ url_for('preparer.edit_questionnaire', user_id=user.id, year=year) }}"
+         class="btn btn-sm btn-outline-dark">Edit Questionnaire</a>
+    </div>
     {% if not questionnaire %}
-      <div class="alert alert-info">The client has not started the questionnaire yet.</div>
+      <div class="alert alert-info">The questionnaire has not been started yet. Click "Edit Questionnaire" to fill it in.</div>
     {% else %}
       {% set answers = questionnaire.answers %}
       {% for section in questionnaire_sections %}

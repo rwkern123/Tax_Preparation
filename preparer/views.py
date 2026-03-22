@@ -317,6 +317,147 @@ def azure_enhance(user_id: int, upload_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Preparer-side file upload (on behalf of client)
+# ---------------------------------------------------------------------------
+
+@preparer_bp.route("/client/<int:user_id>/upload/<int:year>/<category>", methods=["POST"])
+@login_required
+def upload_for_client(user_id: int, year: int, category: str):
+    import secrets
+    from pathlib import Path as _Path
+    from werkzeug.utils import secure_filename
+    from portal.database import save_upload
+
+    if "file" not in request.files or request.files["file"].filename == "":
+        flash("No file selected.", "error")
+        return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+    file = request.files["file"]
+    allowed = current_app.config.get("ALLOWED_EXTENSIONS", set())
+    if _Path(file.filename).suffix.lower() not in allowed:
+        flash("File type not allowed.", "error")
+        return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    dest_dir = _Path(upload_folder) / str(user_id) / str(year) / category
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    original_name = file.filename
+    stored_name = f"{secrets.token_hex(4)}_{secure_filename(original_name)}"
+    dest = dest_dir / stored_name
+    file.save(str(dest))
+
+    upload_id = save_upload(
+        db_path=_portal_db(),
+        user_id=user_id,
+        tax_year=year,
+        category=category,
+        filename=stored_name,
+        original_name=original_name,
+    )
+
+    # Parse if PDF
+    if dest.suffix.lower() == ".pdf":
+        try:
+            from preparer.parser_bridge import parse_uploaded_file
+            from preparer.database import upsert_parsed_document
+            result = parse_uploaded_file(str(dest), use_ocr=False)
+            upsert_parsed_document(
+                db_path=_preparer_db(),
+                upload_id=upload_id,
+                user_id=user_id,
+                tax_year=year,
+                category=category,
+                original_name=original_name,
+                file_path=str(dest),
+                doc_type=result["doc_type"],
+                confidence=result["confidence"],
+                parsing_status=result["parsing_status"],
+                parse_error=result["parse_error"],
+                extracted_json=result["extracted"],
+                drake_json=result["drake"],
+                flags=result["flags"],
+            )
+        except Exception:
+            pass
+
+    flash(f"'{original_name}' uploaded.", "success")
+    return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+
+# ---------------------------------------------------------------------------
+# Preparer-side questionnaire editing (on behalf of client)
+# ---------------------------------------------------------------------------
+
+@preparer_bp.route("/client/<int:user_id>/questionnaire/<int:year>", methods=["GET"])
+@login_required
+def edit_questionnaire(user_id: int, year: int):
+    from portal.database import get_user_by_id, get_questionnaire
+    from portal.questionnaire import QUESTIONNAIRE_SECTIONS, get_section_for_filing_status
+
+    user = get_user_by_id(_portal_db(), user_id)
+    if not user:
+        flash("Client not found.", "error")
+        return redirect(url_for("preparer.client_list"))
+
+    filing_status = user.get("filing_status", "single")
+    sections = get_section_for_filing_status(QUESTIONNAIRE_SECTIONS, filing_status)
+    qr = get_questionnaire(_portal_db(), user_id, year)
+    answers = qr["answers"] if qr else {}
+
+    return render_template(
+        "preparer/questionnaire_edit.html",
+        user=user,
+        year=year,
+        sections=sections,
+        answers=answers,
+    )
+
+
+@preparer_bp.route("/client/<int:user_id>/questionnaire/<int:year>", methods=["POST"])
+@login_required
+def save_questionnaire_for_client(user_id: int, year: int):
+    import json as _json
+    from portal.database import get_user_by_id, get_questionnaire, save_questionnaire
+    from portal.questionnaire import QUESTIONNAIRE_SECTIONS, get_section_for_filing_status
+
+    user = get_user_by_id(_portal_db(), user_id)
+    if not user:
+        flash("Client not found.", "error")
+        return redirect(url_for("preparer.client_list"))
+
+    filing_status = user.get("filing_status", "single")
+    sections = get_section_for_filing_status(QUESTIONNAIRE_SECTIONS, filing_status)
+
+    qr = get_questionnaire(_portal_db(), user_id, year)
+    answers = dict(qr["answers"]) if qr else {}
+
+    for section in sections:
+        for q in section["questions"]:
+            qid = q["id"]
+            qtype = q.get("type", "yes_no")
+            if qtype == "yes_no":
+                val = request.form.get(qid, "")
+                if val in ("yes", "no"):
+                    answers[qid] = val
+            elif qtype == "dependents":
+                dep_json = request.form.get(qid + "_json", "[]")
+                try:
+                    answers[qid] = _json.loads(dep_json)
+                except (ValueError, _json.JSONDecodeError):
+                    answers[qid] = []
+            elif qtype in ("text", "number", "select"):
+                val = request.form.get(qid, "").strip()
+                if val:
+                    answers[qid] = val
+
+    completed = request.form.get("action") == "complete"
+    save_questionnaire(_portal_db(), user_id, year, answers, completed=completed)
+    flash("Questionnaire saved.", "success")
+    return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+
+# ---------------------------------------------------------------------------
 # File viewer
 # ---------------------------------------------------------------------------
 

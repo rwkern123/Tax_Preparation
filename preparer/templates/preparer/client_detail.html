@@ -236,34 +236,40 @@
     {% if not parsed_docs %}
       <div class="alert alert-info">No documents have been parsed yet.</div>
     {% else %}
-      {% for pd in parsed_docs %}
-      <div class="card shadow-sm mb-3">
-        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-          <span class="badge bg-dark">{{ pd.doc_type | replace('_', ' ') | title }}</span>
-          {% if pd.file_path %}
-          <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
-             target="_blank" class="fw-semibold text-decoration-none">
-            {{ pd.original_name }} &#8599;
-          </a>
-          {% else %}
-          <span class="fw-semibold">{{ pd.original_name }}</span>
-          {% endif %}
-          <span class="ms-auto d-flex align-items-center gap-2">
-            <span class="small text-muted">Confidence:</span>
-            <div class="conf-bar-wrap" style="width:100px">
-              <div class="conf-bar" style="width:{{ (pd.confidence * 100) | int }}%"
-                   data-conf="{{ pd.confidence }}"></div>
-              <span class="conf-label">{{ (pd.confidence * 100) | int }}%</span>
-            </div>
-          </span>
-          {% if pd.flags_json %}
-          <span class="badge bg-warning text-dark">{{ pd.flags_json | length }} flag{{ 's' if pd.flags_json | length != 1 }}</span>
-          {% endif %}
-        </div>
-        <div class="card-body">
 
-          {# ── W-2 ── #}
-          {% if pd.doc_type == 'w2' %}
+      {# ── W-2 Wages ── #}
+      {% set w2_docs = parsed_docs | selectattr('doc_type', 'equalto', 'w2') | list %}
+      {% if w2_docs %}
+      <div class="form-section mb-4">
+        <div class="form-section-header d-flex align-items-center gap-2 mb-2 pb-1"
+             style="border-left: 4px solid var(--bs-primary); padding-left: 10px;">
+          <span class="fw-bold fs-6">W-2 &mdash; Wages &amp; Salary</span>
+          <span class="badge bg-primary">{{ w2_docs | length }}</span>
+        </div>
+        {% for pd in w2_docs %}
+        <div class="card shadow-sm mb-2 ms-3">
+          <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
+            {% if pd.file_path %}
+            <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
+               target="_blank" class="fw-semibold text-decoration-none small">
+              {{ pd.original_name }} &#8599;
+            </a>
+            {% else %}
+            <span class="fw-semibold small">{{ pd.original_name }}</span>
+            {% endif %}
+            <span class="ms-auto d-flex align-items-center gap-2">
+              <span class="small text-muted">Confidence:</span>
+              <div class="conf-bar-wrap" style="width:80px">
+                <div class="conf-bar" style="width:{{ (pd.confidence * 100) | int }}%"
+                     data-conf="{{ pd.confidence }}"></div>
+                <span class="conf-label">{{ (pd.confidence * 100) | int }}%</span>
+              </div>
+            </span>
+            {% if pd.flags_json %}
+            <span class="badge bg-warning text-dark">{{ pd.flags_json | length }} flag{{ 's' if pd.flags_json | length != 1 }}</span>
+            {% endif %}
+          </div>
+          <div class="card-body py-2">
             {% for w in pd.extracted_json.get('w2', []) %}
             <div class="row g-3">
               <div class="col-md-6">
@@ -299,9 +305,45 @@
               </div>
             </div>
             {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
 
-          {# ── 1099 Brokerage ── #}
-          {% elif pd.doc_type == 'brokerage_1099' %}
+      {# ── 1099 Brokerage ── #}
+      {% set b1099_docs = parsed_docs | selectattr('doc_type', 'equalto', 'brokerage_1099') | list %}
+      {% if b1099_docs %}
+      <div class="form-section mb-4">
+        <div class="form-section-header d-flex align-items-center gap-2 mb-2 pb-1"
+             style="border-left: 4px solid var(--bs-success); padding-left: 10px;">
+          <span class="fw-bold fs-6">1099 &mdash; Brokerage</span>
+          <span class="badge bg-success">{{ b1099_docs | length }}</span>
+        </div>
+        {% for pd in b1099_docs %}
+        <div class="card shadow-sm mb-2 ms-3">
+          <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
+            {% if pd.file_path %}
+            <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
+               target="_blank" class="fw-semibold text-decoration-none small">
+              {{ pd.original_name }} &#8599;
+            </a>
+            {% else %}
+            <span class="fw-semibold small">{{ pd.original_name }}</span>
+            {% endif %}
+            <span class="ms-auto d-flex align-items-center gap-2">
+              <span class="small text-muted">Confidence:</span>
+              <div class="conf-bar-wrap" style="width:80px">
+                <div class="conf-bar" style="width:{{ (pd.confidence * 100) | int }}%"
+                     data-conf="{{ pd.confidence }}"></div>
+                <span class="conf-label">{{ (pd.confidence * 100) | int }}%</span>
+              </div>
+            </span>
+            {% if pd.flags_json %}
+            <span class="badge bg-warning text-dark">{{ pd.flags_json | length }} flag{{ 's' if pd.flags_json | length != 1 }}</span>
+            {% endif %}
+          </div>
+          <div class="card-body py-2">
             {% for b in pd.extracted_json.get('brokerage_1099', []) %}
             <div class="row g-3">
               <div class="col-md-6">
@@ -383,9 +425,45 @@
             </div>
             {% endif %}
             {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
 
-          {# ── 1098 ── #}
-          {% elif pd.doc_type == 'form_1098' %}
+      {# ── Form 1098 Mortgage ── #}
+      {% set f1098_docs = parsed_docs | selectattr('doc_type', 'equalto', 'form_1098') | list %}
+      {% if f1098_docs %}
+      <div class="form-section mb-4">
+        <div class="form-section-header d-flex align-items-center gap-2 mb-2 pb-1"
+             style="border-left: 4px solid #7c3aed; padding-left: 10px;">
+          <span class="fw-bold fs-6">Form 1098 &mdash; Mortgage Interest</span>
+          <span class="badge" style="background-color:#7c3aed;">{{ f1098_docs | length }}</span>
+        </div>
+        {% for pd in f1098_docs %}
+        <div class="card shadow-sm mb-2 ms-3">
+          <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
+            {% if pd.file_path %}
+            <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
+               target="_blank" class="fw-semibold text-decoration-none small">
+              {{ pd.original_name }} &#8599;
+            </a>
+            {% else %}
+            <span class="fw-semibold small">{{ pd.original_name }}</span>
+            {% endif %}
+            <span class="ms-auto d-flex align-items-center gap-2">
+              <span class="small text-muted">Confidence:</span>
+              <div class="conf-bar-wrap" style="width:80px">
+                <div class="conf-bar" style="width:{{ (pd.confidence * 100) | int }}%"
+                     data-conf="{{ pd.confidence }}"></div>
+                <span class="conf-label">{{ (pd.confidence * 100) | int }}%</span>
+              </div>
+            </span>
+            {% if pd.flags_json %}
+            <span class="badge bg-warning text-dark">{{ pd.flags_json | length }} flag{{ 's' if pd.flags_json | length != 1 }}</span>
+            {% endif %}
+          </div>
+          <div class="card-body py-2">
             {% for f in pd.extracted_json.get('form_1098', []) %}
             <table class="table table-sm field-table" style="max-width:480px">
               <tr><th colspan="2" class="table-light small">Lender: {{ f.lender_name or '--' }}</th></tr>
@@ -399,18 +477,44 @@
               {% endif %}
             </table>
             {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
 
-          {# ── Unknown ── #}
-          {% else %}
-          <p class="text-muted fst-italic mb-0">Document could not be classified. No fields extracted.</p>
-          {% if pd.parse_error %}
-          <p class="text-danger small mt-1">Error: {{ pd.parse_error }}</p>
-          {% endif %}
-          {% endif %}
+      {# ── Unclassified ── #}
+      {% set unknown_docs = parsed_docs | selectattr('doc_type', 'equalto', 'unknown') | list %}
+      {% if unknown_docs %}
+      <div class="form-section mb-4">
+        <div class="form-section-header d-flex align-items-center gap-2 mb-2 pb-1"
+             style="border-left: 4px solid var(--bs-secondary); padding-left: 10px;">
+          <span class="fw-bold fs-6 text-secondary">Unclassified Documents</span>
+          <span class="badge bg-secondary">{{ unknown_docs | length }}</span>
+        </div>
+        {% for pd in unknown_docs %}
+        <div class="card shadow-sm mb-2 ms-3">
+          <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
+            {% if pd.file_path %}
+            <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
+               target="_blank" class="fw-semibold text-decoration-none small">
+              {{ pd.original_name }} &#8599;
+            </a>
+            {% else %}
+            <span class="fw-semibold small">{{ pd.original_name }}</span>
+            {% endif %}
+          </div>
+          <div class="card-body py-2">
+            <p class="text-muted fst-italic mb-0">Document could not be classified. No fields extracted.</p>
+            {% if pd.parse_error %}
+            <p class="text-danger small mt-1">Error: {{ pd.parse_error }}</p>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
 
-        </div>{# card-body #}
-      </div>{# card #}
-      {% endfor %}
     {% endif %}
   </div>
 

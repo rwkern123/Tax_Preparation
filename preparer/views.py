@@ -1,8 +1,9 @@
+import io
 import json
 from pathlib import Path
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, session, current_app, jsonify, flash,
+    url_for, session, current_app, jsonify, flash, send_file,
 )
 from .auth import login_required
 from .database import (
@@ -273,6 +274,9 @@ def client_detail(user_id: int):
     filing_status = user.get("filing_status", "single")
     questionnaire_sections = get_section_for_filing_status(QUESTIONNAIRE_SECTIONS, filing_status)
 
+    from .form_1040_filler import aggregate_1040_data
+    form_1040_data = aggregate_1040_data(parsed_docs, user, year)
+
     return render_template(
         "preparer/client_detail.html",
         user=user,
@@ -287,6 +291,7 @@ def client_detail(user_id: int):
         questionnaire_sections=questionnaire_sections,
         yoy_rows=yoy_rows,
         azure_configured=azure_configured,
+        form_1040_data=form_1040_data,
     )
 
 
@@ -635,6 +640,42 @@ def import_clients():
     else:
         flash(msg, "success")
     return redirect(url_for("preparer.client_list"))
+
+
+def _generate_1040_pdf(user_id: int, year: int) -> bytes:
+    from portal.database import get_user_by_id
+    from .form_1040_filler import aggregate_1040_data, fill_1040_pdf
+
+    user        = get_user_by_id(_portal_db(), user_id)
+    parsed_docs = get_parsed_documents(_preparer_db(), user_id, year)
+    data        = aggregate_1040_data(parsed_docs, user or {}, year)
+    template    = str(Path(current_app.root_path).parent / "pdf_forms" / "Form_1040.pdf")
+    return fill_1040_pdf(data, template)
+
+
+@preparer_bp.route("/client/<int:user_id>/tax-return/pdf")
+@login_required
+def tax_return_pdf(user_id: int):
+    year = int(request.args.get("year", _tax_year_context()["current_year"]))
+    pdf_bytes = _generate_1040_pdf(user_id, year)
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+    )
+
+
+@preparer_bp.route("/client/<int:user_id>/tax-return/download")
+@login_required
+def tax_return_download(user_id: int):
+    year = int(request.args.get("year", _tax_year_context()["current_year"]))
+    pdf_bytes = _generate_1040_pdf(user_id, year)
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"Form_1040_draft_{year}.pdf",
+    )
 
 
 @preparer_bp.route("/settings", methods=["GET"])

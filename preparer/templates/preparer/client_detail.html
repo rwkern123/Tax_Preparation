@@ -74,6 +74,9 @@
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-yoy">Year-over-Year</button>
   </li>
   {% endif %}
+  <li class="nav-item">
+    <button class="nav-link" id="taxReturnTabBtn" data-bs-toggle="tab" data-bs-target="#tab-taxreturn">Tax Return</button>
+  </li>
 </ul>
 
 <div class="tab-content" id="clientTabContent">
@@ -898,6 +901,96 @@
     {% endif %}
   </div>
 
+  {# ════════════════════════════════════════ TAB: Tax Return ════ #}
+  <div class="tab-pane fade" id="tab-taxreturn">
+
+    <div class="alert alert-warning mb-3" role="alert">
+      <strong>Draft preparer worksheet</strong> &mdash; verify all values before filing.
+      Data is pulled from parsed documents only. Review source documents carefully.
+    </div>
+
+    {% if form_1040_data and form_1040_data.lines %}
+      {% set main_lines  = form_1040_data.lines | selectattr('sched', 'none') | list %}
+      {% set sched_lines = form_1040_data.lines | selectattr('sched', 'equalto', 'A') | list %}
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-header py-2 fw-semibold small">Form 1040 — Key Lines</div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th style="min-width:300px">Line / Description</th>
+                <th class="text-end">Value</th>
+                <th>Source Documents</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ln in main_lines %}
+              <tr class="{{ 'table-warning' if ln.value is none }}">
+                <td class="small">{{ ln.label }}</td>
+                <td class="text-end amount">{{ ln.value | fmt_amount if ln.value is not none else '—' }}</td>
+                <td class="small text-muted">{{ ln.sources | join(', ') if ln.sources else '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% if sched_lines %}
+      <div class="mb-3">
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#schedACollapse">
+          Schedule A &mdash; Itemized Deductions
+        </button>
+        <div class="collapse mt-2" id="schedACollapse">
+          <div class="card shadow-sm">
+            <div class="card-header py-2 fw-semibold small">Schedule A</div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th style="min-width:300px">Line / Description</th>
+                    <th class="text-end">Value</th>
+                    <th>Source Documents</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for ln in sched_lines %}
+                  <tr class="{{ 'table-warning' if ln.value is none }}">
+                    <td class="small">{{ ln.label }}</td>
+                    <td class="text-end amount">{{ ln.value | fmt_amount if ln.value is not none else '—' }}</td>
+                    <td class="small text-muted">{{ ln.sources | join(', ') if ln.sources else '—' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+    {% else %}
+      <div class="alert alert-info mb-3">No parsed documents with extractable data. Parse documents first to populate the tax return worksheet.</div>
+    {% endif %}
+
+    <div class="d-flex gap-2 mb-3">
+      <a href="{{ url_for('preparer.tax_return_download', user_id=user.id, year=year) }}"
+         class="btn btn-sm btn-outline-primary">
+        &#11015; Download PDF
+      </a>
+    </div>
+
+    <iframe id="taxReturnIframe"
+            data-src="{{ url_for('preparer.tax_return_pdf', user_id=user.id, year=year) }}"
+            src=""
+            style="width:100%; height:900px; border:1px solid #dee2e6; border-radius:4px;"
+            title="Form 1040 Preview">
+    </iframe>
+
+  </div>{# /tab-taxreturn #}
+
 </div>{# tab-content #}
 
 <script>
@@ -922,5 +1015,20 @@ document.querySelectorAll('.btn-delete-upload').forEach(function(btn) {
     });
   });
 });
+
+// Lazy-load the Tax Return iframe only when the tab is first activated
+(function() {
+  var tabBtn = document.getElementById('taxReturnTabBtn');
+  var iframe = document.getElementById('taxReturnIframe');
+  if (tabBtn && iframe) {
+    var loaded = false;
+    tabBtn.addEventListener('shown.bs.tab', function() {
+      if (!loaded) {
+        iframe.src = iframe.dataset.src;
+        loaded = true;
+      }
+    });
+  }
+})();
 </script>
 {% endblock %}

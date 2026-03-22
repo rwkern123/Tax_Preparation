@@ -361,8 +361,9 @@ def upload_for_client(user_id: int, year: int, category: str):
         original_name=original_name,
     )
 
-    # Parse if PDF
-    if dest.suffix.lower() == ".pdf":
+    # Parse if supported
+    _ext = dest.suffix.lower()
+    if _ext == ".pdf":
         try:
             from preparer.parser_bridge import parse_uploaded_file
             from preparer.database import upsert_parsed_document
@@ -382,6 +383,44 @@ def upload_for_client(user_id: int, year: int, category: str):
                 extracted_json=result["extracted"],
                 drake_json=result["drake"],
                 flags=result["flags"],
+            )
+        except Exception:
+            pass
+    elif _ext in (".csv", ".xml"):
+        try:
+            from preparer.database import upsert_parsed_document
+            from preparer.parser_bridge import _to_drake_fields, _generate_flags
+            from dataclasses import asdict
+            content = dest.read_text(encoding="utf-8", errors="replace")
+            if _ext == ".csv":
+                from src.extract.brokerage_1099_csv import parse_brokerage_1099_csv
+                summary, trades = parse_brokerage_1099_csv(content, source_file=original_name)
+            else:
+                from src.extract.brokerage_1099_xml import parse_brokerage_1099_xml
+                summary, trades = parse_brokerage_1099_xml(content, source_file=original_name)
+            extracted = {
+                "brokerage_1099": [asdict(summary)],
+                "brokerage_1099_trades": [asdict(t) for t in trades],
+            }
+            doc_type = "brokerage_1099"
+            confidence = 1.0
+            drake = _to_drake_fields(doc_type, extracted)
+            flags = _generate_flags(doc_type, confidence, extracted)
+            upsert_parsed_document(
+                db_path=_preparer_db(),
+                upload_id=upload_id,
+                user_id=user_id,
+                tax_year=year,
+                category=category,
+                original_name=original_name,
+                file_path=str(dest),
+                doc_type=doc_type,
+                confidence=confidence,
+                parsing_status="done",
+                parse_error=None,
+                extracted_json=extracted,
+                drake_json=drake,
+                flags=flags,
             )
         except Exception:
             pass

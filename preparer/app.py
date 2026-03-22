@@ -19,7 +19,7 @@ def create_app(config: dict = None) -> Flask:
     app.config["UPLOAD_FOLDER"]     = str(portal_data / "uploads")
     app.config["ALLOWED_EXTENSIONS"] = {
         ".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff",
-        ".doc", ".docx", ".xls", ".xlsx", ".csv"
+        ".doc", ".docx", ".xls", ".xlsx", ".csv", ".xml"
     }
     # Set via env var PREPARER_PASSWORD before first run
     app.config["PREPARER_PASSWORD"] = os.environ.get("PREPARER_PASSWORD", "changeme")

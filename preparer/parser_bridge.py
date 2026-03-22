@@ -28,7 +28,7 @@ def parse_uploaded_file(file_path: str, use_ocr: bool = False) -> dict:
         from src.extract.form_1098 import parse_1098_text
         from src.extract.form_1099b_trades import parse_1099b_trades_text
 
-        text, _notes = get_document_text(path, ocr=use_ocr)
+        text, _notes = get_document_text(path, enable_ocr=use_ocr)
         doc_type, confidence, _year = classify_document(path, text)
 
         extracted: dict = {}

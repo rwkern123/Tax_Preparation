@@ -36,6 +36,21 @@
             </div>
           </div>
 
+          {% if cfg.root_folder %}
+          <div class="mt-3">
+            <form method="post" action="{{ url_for('preparer.import_clients') }}"
+                  onsubmit="return confirm('Import clients from {{ cfg.root_folder }}?')">
+              <button type="submit" class="btn btn-outline-primary btn-sm">
+                Import Clients from Folder
+              </button>
+              <div class="form-text mt-1">
+                Scans the folder above and adds any new clients to the dashboard.
+                Existing clients are skipped.
+              </div>
+            </form>
+          </div>
+          {% endif %}
+
         </div>
       </div>
 

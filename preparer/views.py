@@ -339,6 +339,26 @@ def view_upload(upload_id: int):
 # Settings
 # ---------------------------------------------------------------------------
 
+@preparer_bp.route("/import-clients", methods=["POST"])
+@login_required
+def import_clients():
+    from . import site_config
+    from .folder_import import import_clients_from_folder
+    cfg = site_config.load()
+    root_folder = cfg.get("root_folder", "").strip()
+    if not root_folder:
+        flash("Client Folder Root is not set. Please update Settings first.", "error")
+        return redirect(url_for("preparer.settings"))
+    result = import_clients_from_folder(root_folder, _portal_db())
+    msg = f"Imported {result['imported']} client(s), skipped {result['skipped']} already present."
+    if result["errors"]:
+        msg += " Errors: " + "; ".join(result["errors"])
+        flash(msg, "warning")
+    else:
+        flash(msg, "success")
+    return redirect(url_for("preparer.client_list"))
+
+
 @preparer_bp.route("/settings", methods=["GET"])
 @login_required
 def settings():

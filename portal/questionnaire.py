@@ -350,6 +350,17 @@ def get_required_documents(answers: dict, filing_status: str) -> list[dict]:
         add("1099_B", "1099-B / Brokerage Statement",
             "Investment sale records, trade confirmations, crypto transaction history")
 
+    # Composite convenience option: shown when 2+ brokerage income types are present
+    _brokerage_flags = [
+        answers.get("interest_income") == "yes",
+        answers.get("dividend_income") == "yes",
+        answers.get("investments_sold") == "yes" or answers.get("crypto") == "yes",
+    ]
+    if sum(_brokerage_flags) >= 2:
+        add("Brokerage_1099", "1099 Composite (Brokerage)",
+            "Upload a single combined brokerage PDF covering 1099-DIV, 1099-INT, and/or 1099-B — use this instead of uploading each section separately",
+            required=False)
+
     if answers.get("ira_pension") == "yes":
         add("1099_R", "1099-R",
             "IRA or pension distribution statements")

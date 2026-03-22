@@ -6,7 +6,10 @@ from pathlib import Path
 from dataclasses import asdict
 
 
-def parse_uploaded_file(file_path: str, use_ocr: bool = False) -> dict:
+_BROKERAGE_CATEGORIES = {"1099_INT", "1099_DIV", "1099_B", "Brokerage_1099"}
+
+
+def parse_uploaded_file(file_path: str, use_ocr: bool = False, category_hint: str = "") -> dict:
     """
     Parse a single file and return a normalized result dict:
     {
@@ -30,6 +33,12 @@ def parse_uploaded_file(file_path: str, use_ocr: bool = False) -> dict:
 
         text, _notes = get_document_text(path, enable_ocr=use_ocr)
         doc_type, confidence, _year = classify_document(path, text)
+
+        # If the upload category implies a brokerage form but classification didn't
+        # pick it up (e.g. low-confidence composite PDF), force brokerage parsing.
+        if category_hint in _BROKERAGE_CATEGORIES and doc_type != "brokerage_1099":
+            doc_type = "brokerage_1099"
+            confidence = max(confidence, 0.5)
 
         extracted: dict = {}
         if doc_type == "w2":

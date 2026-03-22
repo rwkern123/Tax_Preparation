@@ -205,6 +205,26 @@ def reparse_document_azure(
     )
 
 
+def delete_parsed_document(db_path: str, upload_id: int) -> dict | None:
+    """Delete a parsed_documents record by upload_id. Returns the deleted row or None."""
+    conn = _get_db(db_path)
+    try:
+        row = conn.execute(
+            "SELECT * FROM parsed_documents WHERE upload_id = ?", (upload_id,)
+        ).fetchone()
+        if row:
+            conn.execute("DELETE FROM parsed_documents WHERE upload_id = ?", (upload_id,))
+            conn.commit()
+            d = dict(row)
+            d["extracted_json"] = json.loads(d["extracted_json"])
+            d["drake_json"] = json.loads(d["drake_json"])
+            d["flags_json"] = json.loads(d["flags_json"])
+            return d
+        return None
+    finally:
+        conn.close()
+
+
 def get_preparer_client_list(
     portal_db: str, preparer_db: str, tax_year: int
 ) -> list[dict]:

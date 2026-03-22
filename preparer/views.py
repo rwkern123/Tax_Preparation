@@ -11,6 +11,7 @@ from .database import (
     get_parsed_document_by_upload_id,
     reparse_document,
     reparse_document_azure,
+    delete_parsed_document,
 )
 
 preparer_bp = Blueprint(
@@ -239,6 +240,15 @@ def client_detail(user_id: int):
     expected_docs = get_required_documents(answers, filing_status)
     doc_status    = _build_doc_status(expected_docs, uploads, parsed_docs)
 
+    # Determine which brokerage sub-categories are covered by a composite upload
+    _BROKERAGE_SUB_CATS = {"1099_INT", "1099_DIV", "1099_B"}
+    brokerage_covered_by_composite: set[str] = set()
+    for pd in parsed_docs:
+        if pd["doc_type"] == "brokerage_1099":
+            if pd["category"] in _BROKERAGE_SUB_CATS or pd["category"] == "Brokerage_1099":
+                brokerage_covered_by_composite.update(_BROKERAGE_SUB_CATS)
+                brokerage_covered_by_composite.add("Brokerage_1099")
+
     # Flatten all flags across parsed docs
     all_flags: list[dict] = []
     for pd in parsed_docs:
@@ -286,6 +296,7 @@ def client_detail(user_id: int):
         questionnaire_sections=questionnaire_sections,
         yoy_rows=yoy_rows,
         azure_configured=azure_configured,
+        brokerage_covered_by_composite=brokerage_covered_by_composite,
     )
 
 
@@ -318,6 +329,51 @@ def azure_enhance(user_id: int, upload_id: int):
     except Exception as exc:
         flash(f"Azure enhancement failed: {exc}", "error")
 
+    return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+
+# ---------------------------------------------------------------------------
+# Delete uploaded document
+# ---------------------------------------------------------------------------
+
+@preparer_bp.route("/client/<int:user_id>/delete-upload/<int:upload_id>", methods=["POST"])
+@login_required
+def delete_upload(user_id: int, upload_id: int):
+    from portal.database import delete_upload as portal_delete_upload
+
+    parsed = delete_parsed_document(_preparer_db(), upload_id)
+    portal_record = portal_delete_upload(_portal_db(), upload_id, user_id)
+
+    # Delete physical file
+    file_path = None
+    if parsed and parsed.get("file_path"):
+        file_path = parsed["file_path"]
+    elif portal_record and portal_record.get("filename"):
+        upload_folder = current_app.config["UPLOAD_FOLDER"]
+        pr = portal_record
+        file_path = str(
+            Path(upload_folder) / str(user_id) / str(pr["tax_year"]) / pr["category"] / pr["filename"]
+        )
+
+    disk_deleted = False
+    if file_path:
+        try:
+            p = Path(file_path)
+            if p.exists():
+                p.unlink()
+                disk_deleted = True
+        except Exception:
+            pass
+
+    is_ajax = (
+        request.is_json
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    if is_ajax:
+        return jsonify({"success": True, "upload_id": upload_id, "disk_deleted": disk_deleted})
+
+    year = portal_record["tax_year"] if portal_record else _tax_year_context()["current_year"]
+    flash("Document deleted.", "success")
     return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
 
 
@@ -367,7 +423,7 @@ def upload_for_client(user_id: int, year: int, category: str):
         try:
             from preparer.parser_bridge import parse_uploaded_file
             from preparer.database import upsert_parsed_document
-            result = parse_uploaded_file(str(dest), use_ocr=False)
+            result = parse_uploaded_file(str(dest), use_ocr=False, category_hint=category)
             upsert_parsed_document(
                 db_path=_preparer_db(),
                 upload_id=upload_id,

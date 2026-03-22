@@ -34,6 +34,32 @@ def detect_year(text: str) -> int | None:
     return Counter(candidates).most_common(1)[0][0]
 
 
+def classify_document_structured(file_path: Path) -> tuple[str, float] | None:
+    """Classify CSV/XML files by extension and content signatures without full-text extraction.
+
+    Returns (doc_type, confidence) if the file is a recognised structured format,
+    or None if the file should fall through to text-based classification.
+    """
+    ext = file_path.suffix.lower()
+    if ext == ".csv":
+        try:
+            sample = file_path.read_text(encoding="utf-8", errors="replace")[:500]
+        except OSError:
+            return None
+        if re.search(r"form 1099", sample, re.IGNORECASE):
+            return ("brokerage_1099", 1.0)
+        return None
+    if ext == ".xml":
+        try:
+            sample = file_path.read_text(encoding="utf-8", errors="replace")[:800]
+        except OSError:
+            return None
+        if re.search(r"TAX1099", sample):
+            return ("brokerage_1099", 1.0)
+        return None
+    return None
+
+
 def classify_document(file_path: Path, text: str) -> tuple[str, float, int | None]:
     # Sample beginning, middle, and end to catch form indicators across all pages
     # without running all patterns against the full text of very large PDFs.

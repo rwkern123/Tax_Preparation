@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
+SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".csv", ".xml"}
 MIN_TEXT_LENGTH_FOR_OCR_SKIP = 120
 
 

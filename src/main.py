@@ -7,9 +7,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from src.checklist import generate_checklist
-from src.classify import classify_document
+from src.classify import classify_document, classify_document_structured
 from src.config import AppConfig
 from src.extract.brokerage_1099 import parse_brokerage_1099_text
+from src.extract.brokerage_1099_csv import parse_brokerage_1099_csv
+from src.extract.brokerage_1099_xml import parse_brokerage_1099_xml
 from src.extract.form_1099b_trades import (
     build_trade_exceptions,
     parse_1099b_trades_text,
@@ -131,8 +133,15 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
     for row in index_client_files(client_dir):
         path = Path(row["file_path"])
         try:
-            text, notes = get_document_text(path, config.enable_ocr)
-            doc_type, confidence, detected_year = classify_document(path, text)
+            structured = classify_document_structured(path)
+            if structured is not None:
+                doc_type, confidence = structured
+                detected_year = None
+                text = ""
+                notes: list[str] = [f"structured:{path.suffix.lower()[1:]}"]
+            else:
+                text, notes = get_document_text(path, config.enable_ocr)
+                doc_type, confidence, detected_year = classify_document(path, text)
 
             key_fields = {}
             issuer = None
@@ -159,30 +168,51 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
                 key_fields = asdict(parsed)
                 issuer = parsed.employer_name
             elif doc_type == "brokerage_1099":
-                parsed = parse_brokerage_1099_text(text)
-                if (
-                    config.enable_azure
-                    and parsed.confidence < _1099_AZURE_THRESH
-                    and config.azure_endpoint
-                    and config.azure_api_key
-                ):
-                    local_conf = parsed.confidence
-                    azure_parsed = parse_brokerage_1099_azure(path, config.azure_endpoint, config.azure_api_key)
-                    if azure_parsed is not None and azure_parsed.confidence >= local_conf:
-                        parsed = azure_parsed
-                        notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
-                    else:
-                        notes.append(
-                            f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
-                        )
-                elif config.enable_azure and parsed.confidence >= _1099_AZURE_THRESH:
-                    notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
-                extraction.brokerage_1099.append(parsed)
-                trades, trade_diag = parse_1099b_trades_text(text, parsed.broker_name, path.name, row["sha256"])
-                extraction.brokerage_1099_trades.extend(trades)
+                ext = path.suffix.lower()
+                if ext == ".csv":
+                    parsed, trades = parse_brokerage_1099_csv(
+                        path.read_text(encoding="utf-8", errors="replace"),
+                        source_file=path.name,
+                        source_sha256=row["sha256"],
+                    )
+                    detected_year = parsed.year
+                    extraction.brokerage_1099.append(parsed)
+                    extraction.brokerage_1099_trades.extend(trades)
+                elif ext == ".xml":
+                    parsed, trades = parse_brokerage_1099_xml(
+                        path.read_text(encoding="utf-8", errors="replace"),
+                        source_file=path.name,
+                        source_sha256=row["sha256"],
+                    )
+                    detected_year = parsed.year
+                    extraction.brokerage_1099.append(parsed)
+                    extraction.brokerage_1099_trades.extend(trades)
+                else:
+                    parsed = parse_brokerage_1099_text(text)
+                    if (
+                        config.enable_azure
+                        and parsed.confidence < _1099_AZURE_THRESH
+                        and config.azure_endpoint
+                        and config.azure_api_key
+                    ):
+                        local_conf = parsed.confidence
+                        azure_parsed = parse_brokerage_1099_azure(path, config.azure_endpoint, config.azure_api_key)
+                        if azure_parsed is not None and azure_parsed.confidence >= local_conf:
+                            parsed = azure_parsed
+                            notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
+                        else:
+                            notes.append(
+                                f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
+                            )
+                    elif config.enable_azure and parsed.confidence >= _1099_AZURE_THRESH:
+                        notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
+                    extraction.brokerage_1099.append(parsed)
+                    trades, trade_diag = parse_1099b_trades_text(text, parsed.broker_name, path.name, row["sha256"])
+                    extraction.brokerage_1099_trades.extend(trades)
                 key_fields = asdict(parsed)
                 key_fields["trade_count"] = len(trades)
-                key_fields["trade_candidates"] = trade_diag.row_candidates
+                if ext not in (".csv", ".xml"):
+                    key_fields["trade_candidates"] = trade_diag.row_candidates
                 issuer = parsed.broker_name
             elif doc_type == "form_1098":
                 parsed = parse_1098_text(text)

@@ -55,4 +55,33 @@ def create_app(config: dict = None) -> Flask:
         except (TypeError, ValueError):
             return str(value)
 
+    # Template globals
+    def holding_duration(date_acquired, date_sold):
+        """Return human-readable holding period duration, or 'Various'."""
+        if not date_acquired or date_acquired.strip().lower() in ("various", "var", "n/a", ""):
+            return "Various"
+        from datetime import datetime
+        for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m/%d/%y"):
+            try:
+                d1 = datetime.strptime(date_acquired.strip(), fmt)
+                d2 = datetime.strptime((date_sold or "").strip(), fmt)
+                days = (d2 - d1).days
+                if days < 0:
+                    return "—"
+                years, rem = divmod(days, 365)
+                months = rem // 30
+                parts = []
+                if years:
+                    parts.append(f"{years}y")
+                if months:
+                    parts.append(f"{months}m")
+                if not parts:
+                    parts.append(f"{days}d")
+                return " ".join(parts)
+            except (ValueError, AttributeError):
+                continue
+        return date_acquired
+
+    app.jinja_env.globals["holding_duration"] = holding_duration
+
     return app

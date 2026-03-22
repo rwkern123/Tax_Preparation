@@ -229,211 +229,450 @@
       <div class="alert alert-info">No documents have been parsed yet.</div>
     {% else %}
 
-      {# ── W-2 Wages ── #}
-      {% set w2_docs = parsed_docs | selectattr('doc_type', 'equalto', 'w2') | list %}
+    {# ── Pre-compute doc buckets ── #}
+    {% set w2_docs      = parsed_docs | selectattr('doc_type', 'equalto', 'w2') | list %}
+    {% set b1099_docs   = parsed_docs | selectattr('doc_type', 'equalto', 'brokerage_1099') | list %}
+    {% set f1098_docs   = parsed_docs | selectattr('doc_type', 'equalto', 'form_1098') | list %}
+    {% set unknown_docs = parsed_docs | selectattr('doc_type', 'equalto', 'unknown') | list %}
+
+    {# W2: taxpayer vs spouse split #}
+    {% set w2_tp_docs = w2_docs | selectattr('category', 'equalto', 'W2_Taxpayer') | list %}
+    {% set w2_sp_docs = w2_docs | selectattr('category', 'equalto', 'W2_Spouse') | list %}
+    {# Non-MFJ fallback: if no W2_Taxpayer category match, all w2s go to taxpayer #}
+    {% if not w2_tp_docs and w2_docs %}{% set w2_tp_docs = w2_docs %}{% endif %}
+
+    {# Brokerage sub-type detection #}
+    {% set has_b_data   = [] %}
+    {% set has_div_data = [] %}
+    {% set has_int_data = [] %}
+    {% for pd in b1099_docs %}
+      {% for b in pd.extracted_json.get('brokerage_1099', []) %}
+        {% if b.get('b_summary') or pd.extracted_json.get('brokerage_1099_trades', []) %}{% if has_b_data.append(1) %}{% endif %}{% endif %}
+        {% if b.get('div_ordinary') is not none or b.get('div_qualified') is not none %}{% if has_div_data.append(1) %}{% endif %}{% endif %}
+        {% if b.get('int_interest_income') is not none or b.get('int_us_treasury') is not none %}{% if has_int_data.append(1) %}{% endif %}{% endif %}
+      {% endfor %}
+    {% endfor %}
+
+    {# ── Form selector pills ── #}
+    {% set pill_ns = namespace(first=true) %}
+    <ul class="nav nav-pills mb-3 flex-wrap gap-1" id="formTypePills">
       {% if w2_docs %}
-      <div class="form-section mb-4">
-        <div class="form-section-header d-flex align-items-center gap-2 mb-2 pb-1"
-             style="border-left: 4px solid var(--bs-primary); padding-left: 10px;">
-          <span class="fw-bold fs-6">W-2 &mdash; Wages &amp; Salary</span>
-          <span class="badge bg-primary">{{ w2_docs | length }}</span>
-        </div>
-        {% for pd in w2_docs %}
-        <div class="card shadow-sm mb-2 ms-3">
-          <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
-            {% if pd.file_path %}
-            <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
-               target="_blank" class="fw-semibold text-decoration-none small">
-              {{ pd.original_name }} &#8599;
-            </a>
-            {% else %}
-            <span class="fw-semibold small">{{ pd.original_name }}</span>
-            {% endif %}
-            <span class="ms-auto d-flex align-items-center gap-2">
-              <span class="small text-muted">Confidence:</span>
-              <div class="conf-bar-wrap" style="width:80px">
-                <div class="conf-bar" style="width:{{ (pd.confidence * 100) | int }}%"
-                     data-conf="{{ pd.confidence }}"></div>
-                <span class="conf-label">{{ (pd.confidence * 100) | int }}%</span>
+      <li class="nav-item">
+        <button class="nav-link {% if pill_ns.first %}active{% endif %}" data-panel="panel-w2">W-2</button>
+      </li>
+      {% set pill_ns.first = false %}
+      {% endif %}
+      {% if has_b_data %}
+      <li class="nav-item">
+        <button class="nav-link {% if pill_ns.first %}active{% endif %}" data-panel="panel-1099b">1099-B</button>
+      </li>
+      {% set pill_ns.first = false %}
+      {% endif %}
+      {% if has_div_data %}
+      <li class="nav-item">
+        <button class="nav-link {% if pill_ns.first %}active{% endif %}" data-panel="panel-1099div">1099-DIV</button>
+      </li>
+      {% set pill_ns.first = false %}
+      {% endif %}
+      {% if has_int_data %}
+      <li class="nav-item">
+        <button class="nav-link {% if pill_ns.first %}active{% endif %}" data-panel="panel-1099int">1099-INT</button>
+      </li>
+      {% set pill_ns.first = false %}
+      {% endif %}
+      {% if f1098_docs %}
+      <li class="nav-item">
+        <button class="nav-link {% if pill_ns.first %}active{% endif %}" data-panel="panel-1098">Form 1098</button>
+      </li>
+      {% set pill_ns.first = false %}
+      {% endif %}
+      {% if unknown_docs %}
+      <li class="nav-item">
+        <button class="nav-link {% if pill_ns.first %}active{% endif %}" data-panel="panel-other">Other</button>
+      </li>
+      {% set pill_ns.first = false %}
+      {% endif %}
+    </ul>
+
+    {# ── Panels ── #}
+    <div id="extractedPanels">
+
+      {# ════ W-2 Panel ════ #}
+      {% if w2_docs %}
+      {% set panel_ns = namespace(first=true) %}
+      {% if not w2_docs %}{% set panel_ns.first = false %}{% endif %}
+      <div id="panel-w2" class="extracted-panel {% if not (w2_docs == parsed_docs | selectattr('doc_type', 'equalto', 'w2') | list or true) %}d-none{% endif %}">
+
+        {# Top half: qualitative info side-by-side #}
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <div class="card h-100 shadow-sm">
+              <div class="card-header py-2 fw-semibold small"
+                   style="background-color:#e8f0fe; border-left:4px solid var(--bs-primary);">
+                Taxpayer
               </div>
-            </span>
-            {% if pd.flags_json %}
-            <span class="badge bg-warning text-dark">{{ pd.flags_json | length }} flag{{ 's' if pd.flags_json | length != 1 }}</span>
-            {% endif %}
-          </div>
-          <div class="card-body py-2">
-            {% for w in pd.extracted_json.get('w2', []) %}
-            <div class="row g-3">
-              <div class="col-md-6">
-                <table class="table table-sm field-table">
-                  <tr><th colspan="2" class="table-light small">Employer</th></tr>
-                  <tr><td>Name</td><td>{{ w.employer_name or '--' }}</td></tr>
-                  <tr><td>EIN</td><td>{{ w.employer_ein or '--' }}</td></tr>
-                  <tr><th colspan="2" class="table-light small">Employee</th></tr>
-                  <tr><td>Name</td><td>{{ w.employee_name or '--' }}</td></tr>
-                </table>
-              </div>
-              <div class="col-md-6">
-                <table class="table table-sm field-table">
-                  <tr><th colspan="2" class="table-light small">Wages &amp; Withholding</th></tr>
-                  <tr><td>Box 1 &mdash; Wages</td><td class="amount">{{ w.box1_wages | fmt_amount }}</td></tr>
-                  <tr><td>Box 2 &mdash; Federal Withheld</td><td class="amount">{{ w.box2_fed_withholding | fmt_amount }}</td></tr>
-                  <tr><td>Box 3 &mdash; SS Wages</td><td class="amount">{{ w.box3_ss_wages | fmt_amount }}</td></tr>
-                  <tr><td>Box 4 &mdash; SS Tax</td><td class="amount">{{ w.box4_ss_tax | fmt_amount }}</td></tr>
-                  <tr><td>Box 5 &mdash; Medicare Wages</td><td class="amount">{{ w.box5_medicare_wages | fmt_amount }}</td></tr>
-                  <tr><td>Box 6 &mdash; Medicare Tax</td><td class="amount">{{ w.box6_medicare_tax | fmt_amount }}</td></tr>
-                  <tr><td>Box 13 &mdash; Retirement Plan</td><td>{{ 'Yes' if w.box13_retirement_plan else 'No' }}</td></tr>
-                  <tr><td>Box 16 &mdash; State Wages</td><td class="amount">{{ w.box16_state_wages | fmt_amount }}</td></tr>
-                  <tr><td>Box 17 &mdash; State Tax</td><td class="amount">{{ w.box17_state_tax | fmt_amount }}</td></tr>
-                </table>
-                {% if w.box12 %}
-                <table class="table table-sm field-table">
-                  <tr><th colspan="2" class="table-light small">Box 12 Codes</th></tr>
-                  {% for code, val in w.box12.items() %}
-                  <tr><td>Code {{ code }}</td><td class="amount">{{ val | fmt_amount }}</td></tr>
+              <div class="card-body py-2">
+                {% if w2_tp_docs %}
+                  {% for pd in w2_tp_docs %}
+                    {% for w in pd.extracted_json.get('w2', []) %}
+                    <table class="table table-sm field-table mb-2">
+                      <tr><th colspan="2" class="table-light small">
+                        {% if pd.file_path %}
+                        <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}" target="_blank"
+                           class="text-decoration-none">{{ pd.original_name }} &#8599;</a>
+                        {% else %}{{ pd.original_name }}{% endif %}
+                      </th></tr>
+                      <tr><td>Employer</td><td>{{ w.get('employer_name') or '--' }}</td></tr>
+                      <tr><td>EIN</td><td>{{ w.get('employer_ein') or '--' }}</td></tr>
+                      <tr><td>Employee</td><td>{{ w.get('employee_name') or '--' }}</td></tr>
+                      {% if w.get('employer_address') %}
+                      <tr><td>Address</td><td>{{ w.get('employer_address') }}{% if w.get('employer_city') %}, {{ w.get('employer_city') }}{% endif %}{% if w.get('employer_state') %}, {{ w.get('employer_state') }}{% endif %}{% if w.get('employer_zip') %} {{ w.get('employer_zip') }}{% endif %}</td></tr>
+                      {% endif %}
+                    </table>
+                    {% endfor %}
                   {% endfor %}
-                </table>
+                {% else %}
+                  <p class="text-muted small fst-italic mb-0">No taxpayer W-2 uploaded.</p>
                 {% endif %}
               </div>
             </div>
-            {% endfor %}
+          </div>
+          <div class="col-md-6">
+            <div class="card h-100 shadow-sm">
+              <div class="card-header py-2 fw-semibold small"
+                   style="background-color:#fce8f3; border-left:4px solid #d63384;">
+                Spouse
+              </div>
+              <div class="card-body py-2">
+                {% if w2_sp_docs %}
+                  {% for pd in w2_sp_docs %}
+                    {% for w in pd.extracted_json.get('w2', []) %}
+                    <table class="table table-sm field-table mb-2">
+                      <tr><th colspan="2" class="table-light small">
+                        {% if pd.file_path %}
+                        <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}" target="_blank"
+                           class="text-decoration-none">{{ pd.original_name }} &#8599;</a>
+                        {% else %}{{ pd.original_name }}{% endif %}
+                      </th></tr>
+                      <tr><td>Employer</td><td>{{ w.get('employer_name') or '--' }}</td></tr>
+                      <tr><td>EIN</td><td>{{ w.get('employer_ein') or '--' }}</td></tr>
+                      <tr><td>Employee</td><td>{{ w.get('employee_name') or '--' }}</td></tr>
+                      {% if w.get('employer_address') %}
+                      <tr><td>Address</td><td>{{ w.get('employer_address') }}{% if w.get('employer_city') %}, {{ w.get('employer_city') }}{% endif %}{% if w.get('employer_state') %}, {{ w.get('employer_state') }}{% endif %}{% if w.get('employer_zip') %} {{ w.get('employer_zip') }}{% endif %}</td></tr>
+                      {% endif %}
+                    </table>
+                    {% endfor %}
+                  {% endfor %}
+                {% else %}
+                  <p class="text-muted small fst-italic mb-0">No spouse W-2 uploaded.</p>
+                {% endif %}
+              </div>
+            </div>
           </div>
         </div>
-        {% endfor %}
-      </div>
+
+        {# Bottom: Wages & Withholding summary table — accumulate per-person totals #}
+        {% set tp = namespace(box1=none,box2=none,box3=none,box4=none,box5=none,box6=none,box16=none,box17=none,retire=false) %}
+        {% for pd in w2_tp_docs %}{% for w in pd.extracted_json.get('w2', []) %}
+          {% if w.get('box1_wages')           is not none %}{% set tp.box1  = (tp.box1  or 0) + w.get('box1_wages')           %}{% endif %}
+          {% if w.get('box2_fed_withholding') is not none %}{% set tp.box2  = (tp.box2  or 0) + w.get('box2_fed_withholding') %}{% endif %}
+          {% if w.get('box3_ss_wages')        is not none %}{% set tp.box3  = (tp.box3  or 0) + w.get('box3_ss_wages')        %}{% endif %}
+          {% if w.get('box4_ss_tax')          is not none %}{% set tp.box4  = (tp.box4  or 0) + w.get('box4_ss_tax')          %}{% endif %}
+          {% if w.get('box5_medicare_wages')  is not none %}{% set tp.box5  = (tp.box5  or 0) + w.get('box5_medicare_wages')  %}{% endif %}
+          {% if w.get('box6_medicare_tax')    is not none %}{% set tp.box6  = (tp.box6  or 0) + w.get('box6_medicare_tax')    %}{% endif %}
+          {% if w.get('box16_state_wages')    is not none %}{% set tp.box16 = (tp.box16 or 0) + w.get('box16_state_wages')    %}{% endif %}
+          {% if w.get('box17_state_tax')      is not none %}{% set tp.box17 = (tp.box17 or 0) + w.get('box17_state_tax')      %}{% endif %}
+          {% if w.get('box13_retirement_plan') %}{% set tp.retire = true %}{% endif %}
+        {% endfor %}{% endfor %}
+
+        {% set sp = namespace(box1=none,box2=none,box3=none,box4=none,box5=none,box6=none,box16=none,box17=none,retire=false) %}
+        {% for pd in w2_sp_docs %}{% for w in pd.extracted_json.get('w2', []) %}
+          {% if w.get('box1_wages')           is not none %}{% set sp.box1  = (sp.box1  or 0) + w.get('box1_wages')           %}{% endif %}
+          {% if w.get('box2_fed_withholding') is not none %}{% set sp.box2  = (sp.box2  or 0) + w.get('box2_fed_withholding') %}{% endif %}
+          {% if w.get('box3_ss_wages')        is not none %}{% set sp.box3  = (sp.box3  or 0) + w.get('box3_ss_wages')        %}{% endif %}
+          {% if w.get('box4_ss_tax')          is not none %}{% set sp.box4  = (sp.box4  or 0) + w.get('box4_ss_tax')          %}{% endif %}
+          {% if w.get('box5_medicare_wages')  is not none %}{% set sp.box5  = (sp.box5  or 0) + w.get('box5_medicare_wages')  %}{% endif %}
+          {% if w.get('box6_medicare_tax')    is not none %}{% set sp.box6  = (sp.box6  or 0) + w.get('box6_medicare_tax')    %}{% endif %}
+          {% if w.get('box16_state_wages')    is not none %}{% set sp.box16 = (sp.box16 or 0) + w.get('box16_state_wages')    %}{% endif %}
+          {% if w.get('box17_state_tax')      is not none %}{% set sp.box17 = (sp.box17 or 0) + w.get('box17_state_tax')      %}{% endif %}
+          {% if w.get('box13_retirement_plan') %}{% set sp.retire = true %}{% endif %}
+        {% endfor %}{% endfor %}
+
+        <div class="card shadow-sm">
+          <div class="card-header py-2 fw-semibold small"
+               style="border-left:4px solid var(--bs-primary);">
+            Wages &amp; Withholding
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm field-table mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:40%">Field</th>
+                  <th class="text-end">Taxpayer</th>
+                  {% if w2_sp_docs %}<th class="text-end">Spouse</th>{% endif %}
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% macro w2row(label, tp_val, sp_val) %}
+                <tr>
+                  <td>{{ label }}</td>
+                  <td class="text-end amount">{{ tp_val | fmt_amount }}</td>
+                  {% if w2_sp_docs %}<td class="text-end amount">{{ sp_val | fmt_amount }}</td>{% endif %}
+                  <td class="text-end amount fw-semibold">
+                    {% if tp_val is not none or sp_val is not none %}{{ ((tp_val or 0) + (sp_val or 0)) | fmt_amount }}{% else %}—{% endif %}
+                  </td>
+                </tr>
+                {% endmacro %}
+                {{ w2row('Box 1 — Wages',            tp.box1,  sp.box1)  }}
+                {{ w2row('Box 2 — Federal Withheld', tp.box2,  sp.box2)  }}
+                {{ w2row('Box 3 — SS Wages',         tp.box3,  sp.box3)  }}
+                {{ w2row('Box 4 — SS Tax',           tp.box4,  sp.box4)  }}
+                {{ w2row('Box 5 — Medicare Wages',   tp.box5,  sp.box5)  }}
+                {{ w2row('Box 6 — Medicare Tax',     tp.box6,  sp.box6)  }}
+                <tr>
+                  <td>Box 13 — Retirement Plan</td>
+                  <td class="text-end">{{ 'Yes' if tp.retire else 'No' }}</td>
+                  {% if w2_sp_docs %}<td class="text-end">{{ 'Yes' if sp.retire else 'No' }}</td>{% endif %}
+                  <td class="text-end text-muted">—</td>
+                </tr>
+                {{ w2row('Box 16 — State Wages', tp.box16, sp.box16) }}
+                {{ w2row('Box 17 — State Tax',   tp.box17, sp.box17) }}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>{# /panel-w2 #}
       {% endif %}
 
-      {# ── 1099 Brokerage ── #}
-      {% set b1099_docs = parsed_docs | selectattr('doc_type', 'equalto', 'brokerage_1099') | list %}
+      {# ════ 1099-B Panel ════ #}
       {% if b1099_docs %}
-      <div class="form-section mb-4">
-        <div class="form-section-header d-flex align-items-center gap-2 mb-2 pb-1"
-             style="border-left: 4px solid var(--bs-success); padding-left: 10px;">
-          <span class="fw-bold fs-6">1099 &mdash; Brokerage</span>
-          <span class="badge bg-success">{{ b1099_docs | length }}</span>
-        </div>
-        {% for pd in b1099_docs %}
-        <div class="card shadow-sm mb-2 ms-3">
-          <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
-            {% if pd.file_path %}
-            <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
-               target="_blank" class="fw-semibold text-decoration-none small">
-              {{ pd.original_name }} &#8599;
-            </a>
-            {% else %}
-            <span class="fw-semibold small">{{ pd.original_name }}</span>
-            {% endif %}
-            <span class="ms-auto d-flex align-items-center gap-2">
-              <span class="small text-muted">Confidence:</span>
-              <div class="conf-bar-wrap" style="width:80px">
-                <div class="conf-bar" style="width:{{ (pd.confidence * 100) | int }}%"
-                     data-conf="{{ pd.confidence }}"></div>
-                <span class="conf-label">{{ (pd.confidence * 100) | int }}%</span>
-              </div>
-            </span>
-            {% if pd.flags_json %}
-            <span class="badge bg-warning text-dark">{{ pd.flags_json | length }} flag{{ 's' if pd.flags_json | length != 1 }}</span>
-            {% endif %}
-          </div>
-          <div class="card-body py-2">
-            {% for b in pd.extracted_json.get('brokerage_1099', []) %}
-            <div class="row g-3">
-              <div class="col-md-6">
-                <table class="table table-sm field-table">
-                  <tr><th colspan="2" class="table-light small">Broker: {{ b.broker_name or '--' }}</th></tr>
-                  <tr><th colspan="2" class="table-light small">Dividends (1099-DIV)</th></tr>
-                  <tr><td>Ordinary Dividends</td><td class="amount">{{ b.div_ordinary | fmt_amount }}</td></tr>
-                  <tr><td>Qualified Dividends</td><td class="amount">{{ b.div_qualified | fmt_amount }}</td></tr>
-                  <tr><td>Cap Gain Distributions</td><td class="amount">{{ b.div_cap_gain_distributions | fmt_amount }}</td></tr>
-                  <tr><td>Foreign Tax Paid</td><td class="amount">{{ b.div_foreign_tax_paid | fmt_amount }}</td></tr>
-                </table>
-              </div>
-              <div class="col-md-6">
-                <table class="table table-sm field-table">
-                  <tr><th colspan="2" class="table-light small">Interest (1099-INT)</th></tr>
-                  <tr><td>Interest Income</td><td class="amount">{{ b.int_interest_income | fmt_amount }}</td></tr>
-                  <tr><td>US Treasury Interest</td><td class="amount">{{ b.int_us_treasury | fmt_amount }}</td></tr>
-                  <tr><th colspan="2" class="table-light small">Sales Summary (1099-B)</th></tr>
-                  <tr><td>Proceeds</td><td class="amount">{{ b.b_summary.get('proceeds') | fmt_amount }}</td></tr>
-                  <tr><td>Cost Basis</td><td class="amount">{{ b.b_summary.get('cost_basis') | fmt_amount }}</td></tr>
-                  <tr><td>Wash Sales</td><td class="amount">{{ b.b_summary.get('wash_sales') | fmt_amount }}</td></tr>
-                  <tr><td>Short-Term G/L</td><td class="amount">{{ b.b_summary.get('short_term_gain_loss') | fmt_amount }}</td></tr>
-                  <tr><td>Long-Term G/L</td><td class="amount">{{ b.b_summary.get('long_term_gain_loss') | fmt_amount }}</td></tr>
-                  {% if b.b_short_term_covered is not none or b.b_short_term_noncovered is not none or b.b_long_term_covered is not none or b.b_long_term_noncovered is not none %}
-                  <tr><th colspan="2" class="table-light small">Gain/Loss by IRS Reporting Status</th></tr>
-                  <tr><td>Short-Term Covered</td><td class="amount">{{ b.b_short_term_covered | fmt_amount }}</td></tr>
-                  <tr><td>Short-Term Non-Covered</td><td class="amount">{{ b.b_short_term_noncovered | fmt_amount }}</td></tr>
-                  <tr><td>Long-Term Covered</td><td class="amount">{{ b.b_long_term_covered | fmt_amount }}</td></tr>
-                  <tr><td>Long-Term Non-Covered</td><td class="amount">{{ b.b_long_term_noncovered | fmt_amount }}</td></tr>
-                  {% endif %}
-                  {% if b.section_1256_net_gain_loss is not none %}
-                  <tr><td>Section 1256 Net G/L</td><td class="amount">{{ b.section_1256_net_gain_loss | fmt_amount }}</td></tr>
-                  {% endif %}
-                </table>
-              </div>
-            </div>
-            {# Trade rows -- collapsible #}
-            {% set trades = pd.extracted_json.get('brokerage_1099_trades', []) %}
-            {% if trades %}
-            <div class="mt-2">
-              <button class="btn btn-sm btn-outline-secondary" type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#trades-{{ loop.index }}-{{ pd.upload_id }}">
-                Show {{ trades | length }} trade row{{ 's' if trades | length != 1 }}
-              </button>
-              <div class="collapse mt-2" id="trades-{{ loop.index }}-{{ pd.upload_id }}">
-                <div class="table-responsive">
-                  <table class="table table-sm table-bordered small">
-                    <thead class="table-light">
-                      <tr>
-                        <th>Security</th>
-                        <th>Acquired</th>
-                        <th>Sold</th>
-                        <th>Holding</th>
-                        <th class="text-end">Proceeds</th>
-                        <th class="text-end">Cost Basis</th>
-                        <th class="text-end">G/L</th>
-                        <th>8949 Box</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for t in trades %}
-                      <tr>
-                        <td>{{ t.description }}</td>
-                        <td>{{ t.date_acquired or '--' }}</td>
-                        <td>{{ t.date_sold_or_disposed or '--' }}</td>
-                        <td>{{ t.holding_period | title }}</td>
-                        <td class="text-end">{{ t.proceeds_gross | fmt_amount }}</td>
-                        <td class="text-end">{{ t.cost_basis | fmt_amount }}</td>
-                        <td class="text-end {% if t.realized_gain_loss and t.realized_gain_loss < 0 %}text-danger{% endif %}">
-                          {{ t.realized_gain_loss | fmt_amount }}</td>
-                        <td>{{ t.form_8949_box or '--' }}</td>
-                      </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-            {% endif %}
-            {% endfor %}
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-      {% endif %}
+      <div id="panel-1099b" class="extracted-panel d-none">
 
-      {# ── Form 1098 Mortgage ── #}
-      {% set f1098_docs = parsed_docs | selectattr('doc_type', 'equalto', 'form_1098') | list %}
-      {% if f1098_docs %}
-      <div class="form-section mb-4">
-        <div class="form-section-header d-flex align-items-center gap-2 mb-2 pb-1"
-             style="border-left: 4px solid #7c3aed; padding-left: 10px;">
-          <span class="fw-bold fs-6">Form 1098 &mdash; Mortgage Interest</span>
-          <span class="badge" style="background-color:#7c3aed;">{{ f1098_docs | length }}</span>
+        {# Per-account summary #}
+        <div class="card shadow-sm mb-3">
+          <div class="card-header py-2 fw-semibold small"
+               style="border-left:4px solid var(--bs-success);">
+            1099-B &mdash; Sales Summary
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm field-table mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="min-width:180px">Field</th>
+                  {% for pd in b1099_docs %}
+                    {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
+                    <th class="text-end small">
+                      {{ b0.get('broker_name') or pd.original_name }}<br>
+                      <span class="text-muted fw-normal">
+                        {% if b0.get('account_number') %}Acct: {{ b0.get('account_number') }}{% else %}—{% endif %}
+                      </span>
+                    </th>
+                  {% endfor %}
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {# Macro for a b_summary dict field #}
+                {% macro bsum_row(label, key) %}
+                {% set rns = namespace(total=none) %}
+                <tr>
+                  <td>{{ label }}</td>
+                  {% for pd in b1099_docs %}
+                    {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
+                    {% set val = b0.get('b_summary', {}).get(key) if b0 else none %}
+                    <td class="text-end amount">{{ val | fmt_amount }}</td>
+                    {% if val is not none %}{% set rns.total = (rns.total or 0) + val %}{% endif %}
+                  {% endfor %}
+                  <td class="text-end amount fw-semibold">{{ rns.total | fmt_amount }}</td>
+                </tr>
+                {% endmacro %}
+                {# Macro for a top-level field on the brokerage_1099 object #}
+                {% macro b1_row(label, key) %}
+                {% set rns = namespace(total=none) %}
+                <tr>
+                  <td>{{ label }}</td>
+                  {% for pd in b1099_docs %}
+                    {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
+                    {% set val = b0.get(key) if b0 else none %}
+                    <td class="text-end amount">{{ val | fmt_amount }}</td>
+                    {% if val is not none %}{% set rns.total = (rns.total or 0) + val %}{% endif %}
+                  {% endfor %}
+                  <td class="text-end amount fw-semibold">{{ rns.total | fmt_amount }}</td>
+                </tr>
+                {% endmacro %}
+                {{ bsum_row('Proceeds',           'proceeds') }}
+                {{ bsum_row('Cost Basis',         'cost_basis') }}
+                {{ bsum_row('Wash Sales',         'wash_sales') }}
+                {{ bsum_row('Short-Term G/L',     'short_term_gain_loss') }}
+                {{ bsum_row('Long-Term G/L',      'long_term_gain_loss') }}
+                {{ b1_row('ST Covered',           'b_short_term_covered') }}
+                {{ b1_row('ST Non-Covered',       'b_short_term_noncovered') }}
+                {{ b1_row('LT Covered',           'b_long_term_covered') }}
+                {{ b1_row('LT Non-Covered',       'b_long_term_noncovered') }}
+                {{ b1_row('Section 1256 Net G/L', 'section_1256_net_gain_loss') }}
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        {# Individual transactions #}
+        {% set any_trades = [] %}
+        {% for pd in b1099_docs %}{% if pd.extracted_json.get('brokerage_1099_trades') %}{% if any_trades.append(1) %}{% endif %}{% endif %}{% endfor %}
+        {% if any_trades %}
+        <div class="card shadow-sm">
+          <div class="card-header py-2 fw-semibold small"
+               style="border-left:4px solid var(--bs-success);">
+            Individual Transactions
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered small mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Brokerage</th>
+                  <th>Account</th>
+                  <th>Description</th>
+                  <th>Date Acquired</th>
+                  <th>Date Sold</th>
+                  <th>Holding Period</th>
+                  <th class="text-end">Proceeds</th>
+                  <th class="text-end">Cost Basis</th>
+                  <th class="text-end">Wash Sale</th>
+                  <th>ST / LT</th>
+                  <th>IRS Basis</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for pd in b1099_docs %}
+                  {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
+                  {% set acct_broker = b0.get('broker_name') or pd.original_name %}
+                  {% set acct_num    = b0.get('account_number') or '—' %}
+                  {% for t in pd.extracted_json.get('brokerage_1099_trades', []) %}
+                  {% set acq_raw = t.get('date_acquired') or '' %}
+                  {% set is_various = acq_raw.strip().lower() in ('various', 'var', '') %}
+                  <tr>
+                    <td class="text-nowrap">{{ acct_broker }}</td>
+                    <td class="text-nowrap">{{ acct_num }}</td>
+                    <td>{{ t.get('description') or '--' }}</td>
+                    <td class="text-nowrap">{% if is_various %}Various{% else %}{{ acq_raw }}{% endif %}</td>
+                    <td class="text-nowrap">{{ t.get('date_sold_or_disposed') or '--' }}</td>
+                    <td class="text-nowrap">{{ holding_duration(t.get('date_acquired'), t.get('date_sold_or_disposed')) }}</td>
+                    <td class="text-end">{{ t.get('proceeds_gross') | fmt_amount }}</td>
+                    <td class="text-end">{{ t.get('cost_basis') | fmt_amount }}</td>
+                    <td class="text-end">{{ t.get('wash_sale_amount') | fmt_amount }}</td>
+                    <td>{% if t.get('holding_period') == 'short_term' %}Short{% elif t.get('holding_period') == 'long_term' %}Long{% else %}—{% endif %}</td>
+                    <td>{% if t.get('basis_reported_to_irs') == 'yes' %}Yes{% elif t.get('basis_reported_to_irs') == 'no' %}No{% else %}—{% endif %}</td>
+                  </tr>
+                  {% endfor %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+      </div>{# /panel-1099b #}
+
+      {# ════ 1099-DIV Panel ════ #}
+      <div id="panel-1099div" class="extracted-panel d-none">
+        <div class="card shadow-sm">
+          <div class="card-header py-2 fw-semibold small"
+               style="border-left:4px solid #fd7e14;">
+            1099-DIV &mdash; Dividends
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm field-table mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="min-width:180px">Field</th>
+                  {% for pd in b1099_docs %}
+                    {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
+                    <th class="text-end small">
+                      {{ b0.get('broker_name') or pd.original_name }}<br>
+                      <span class="text-muted fw-normal">
+                        {% if b0.get('account_number') %}Acct: {{ b0.get('account_number') }}{% else %}—{% endif %}
+                      </span>
+                    </th>
+                  {% endfor %}
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% macro div_row(label, key) %}
+                {% set rns = namespace(total=none) %}
+                <tr>
+                  <td>{{ label }}</td>
+                  {% for pd in b1099_docs %}
+                    {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
+                    {% set val = b0.get(key) if b0 else none %}
+                    <td class="text-end amount">{{ val | fmt_amount }}</td>
+                    {% if val is not none %}{% set rns.total = (rns.total or 0) + val %}{% endif %}
+                  {% endfor %}
+                  <td class="text-end amount fw-semibold">{{ rns.total | fmt_amount }}</td>
+                </tr>
+                {% endmacro %}
+                {{ div_row('Ordinary Dividends',     'div_ordinary') }}
+                {{ div_row('Qualified Dividends',    'div_qualified') }}
+                {{ div_row('Cap Gain Distributions', 'div_cap_gain_distributions') }}
+                {{ div_row('Foreign Tax Paid',       'div_foreign_tax_paid') }}
+                {{ div_row('Section 199A Dividends', 'div_section_199a') }}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>{# /panel-1099div #}
+
+      {# ════ 1099-INT Panel ════ #}
+      <div id="panel-1099int" class="extracted-panel d-none">
+        <div class="card shadow-sm">
+          <div class="card-header py-2 fw-semibold small"
+               style="border-left:4px solid #20c997;">
+            1099-INT &mdash; Interest
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm field-table mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="min-width:180px">Field</th>
+                  {% for pd in b1099_docs %}
+                    {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
+                    <th class="text-end small">
+                      {{ b0.get('broker_name') or pd.original_name }}<br>
+                      <span class="text-muted fw-normal">
+                        {% if b0.get('account_number') %}Acct: {{ b0.get('account_number') }}{% else %}—{% endif %}
+                      </span>
+                    </th>
+                  {% endfor %}
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% macro int_row(label, key) %}
+                {% set rns = namespace(total=none) %}
+                <tr>
+                  <td>{{ label }}</td>
+                  {% for pd in b1099_docs %}
+                    {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
+                    {% set val = b0.get(key) if b0 else none %}
+                    <td class="text-end amount">{{ val | fmt_amount }}</td>
+                    {% if val is not none %}{% set rns.total = (rns.total or 0) + val %}{% endif %}
+                  {% endfor %}
+                  <td class="text-end amount fw-semibold">{{ rns.total | fmt_amount }}</td>
+                </tr>
+                {% endmacro %}
+                {{ int_row('Interest Income',      'int_interest_income') }}
+                {{ int_row('US Treasury Interest', 'int_us_treasury') }}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>{# /panel-1099int #}
+      {% endif %}{# /b1099_docs #}
+
+      {# ════ Form 1098 Panel ════ #}
+      {% if f1098_docs %}
+      <div id="panel-1098" class="extracted-panel d-none">
         {% for pd in f1098_docs %}
-        <div class="card shadow-sm mb-2 ms-3">
+        <div class="card shadow-sm mb-2">
           <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
             {% if pd.file_path %}
             <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
@@ -458,34 +697,28 @@
           <div class="card-body py-2">
             {% for f in pd.extracted_json.get('form_1098', []) %}
             <table class="table table-sm field-table" style="max-width:480px">
-              <tr><th colspan="2" class="table-light small">Lender: {{ f.lender_name or '--' }}</th></tr>
-              <tr><td>Mortgage Interest</td><td class="amount">{{ f.mortgage_interest_received | fmt_amount }}</td></tr>
-              <tr><td>Points Paid</td><td class="amount">{{ f.points_paid | fmt_amount }}</td></tr>
-              <tr><td>Mortgage Insurance Premiums</td><td class="amount">{{ f.mortgage_insurance_premiums | fmt_amount }}</td></tr>
-              <tr><td>Real Estate Taxes</td><td class="amount">{{ f.real_estate_taxes | fmt_amount }}</td></tr>
-              <tr><td>Outstanding Principal</td><td class="amount">{{ f.mortgage_principal_outstanding | fmt_amount }}</td></tr>
-              {% if f.borrower_names %}
-              <tr><td>Borrowers</td><td>{{ f.borrower_names | join(', ') }}</td></tr>
+              <tr><th colspan="2" class="table-light small">Lender: {{ f.get('lender_name') or '--' }}</th></tr>
+              <tr><td>Mortgage Interest</td><td class="amount">{{ f.get('mortgage_interest_received') | fmt_amount }}</td></tr>
+              <tr><td>Points Paid</td><td class="amount">{{ f.get('points_paid') | fmt_amount }}</td></tr>
+              <tr><td>Mortgage Insurance Premiums</td><td class="amount">{{ f.get('mortgage_insurance_premiums') | fmt_amount }}</td></tr>
+              <tr><td>Real Estate Taxes</td><td class="amount">{{ f.get('real_estate_taxes') | fmt_amount }}</td></tr>
+              <tr><td>Outstanding Principal</td><td class="amount">{{ f.get('mortgage_principal_outstanding') | fmt_amount }}</td></tr>
+              {% if f.get('borrower_names') %}
+              <tr><td>Borrowers</td><td>{{ f.get('borrower_names') | join(', ') }}</td></tr>
               {% endif %}
             </table>
             {% endfor %}
           </div>
         </div>
         {% endfor %}
-      </div>
+      </div>{# /panel-1098 #}
       {% endif %}
 
-      {# ── Unclassified ── #}
-      {% set unknown_docs = parsed_docs | selectattr('doc_type', 'equalto', 'unknown') | list %}
+      {# ════ Other Panel ════ #}
       {% if unknown_docs %}
-      <div class="form-section mb-4">
-        <div class="form-section-header d-flex align-items-center gap-2 mb-2 pb-1"
-             style="border-left: 4px solid var(--bs-secondary); padding-left: 10px;">
-          <span class="fw-bold fs-6 text-secondary">Unclassified Documents</span>
-          <span class="badge bg-secondary">{{ unknown_docs | length }}</span>
-        </div>
+      <div id="panel-other" class="extracted-panel d-none">
         {% for pd in unknown_docs %}
-        <div class="card shadow-sm mb-2 ms-3">
+        <div class="card shadow-sm mb-2">
           <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
             {% if pd.file_path %}
             <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
@@ -504,8 +737,25 @@
           </div>
         </div>
         {% endfor %}
-      </div>
+      </div>{# /panel-other #}
       {% endif %}
+
+    </div>{# /extractedPanels #}
+
+    <script>
+    (function() {
+      var pills = document.querySelectorAll('#formTypePills .nav-link');
+      pills.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          pills.forEach(function(b) { b.classList.remove('active'); });
+          document.querySelectorAll('.extracted-panel').forEach(function(p) { p.classList.add('d-none'); });
+          btn.classList.add('active');
+          var panel = document.getElementById(btn.dataset.panel);
+          if (panel) panel.classList.remove('d-none');
+        });
+      });
+    })();
+    </script>
 
     {% endif %}
   </div>

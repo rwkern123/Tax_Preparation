@@ -21,8 +21,11 @@ preparer_bp = Blueprint(
     static_url_path="/static",
 )
 
-TAX_YEARS    = [2022, 2023, 2024]
-CURRENT_YEAR = 2024
+def _tax_year_context() -> dict:
+    site_cfg = current_app.config.get("SITE_CONFIG", {})
+    current = site_cfg.get("tax_year", 2024)
+    years = list(range(current - 2, current + 1))
+    return {"tax_years": years, "current_year": current}
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +200,8 @@ def _compute_yoy_comparison(
 @preparer_bp.route("/")
 @login_required
 def client_list():
-    year = int(request.args.get("year", CURRENT_YEAR))
+    ctx = _tax_year_context()
+    year = int(request.args.get("year", ctx["current_year"]))
     clients = get_preparer_client_list(
         portal_db=_portal_db(),
         preparer_db=_preparer_db(),
@@ -207,14 +211,15 @@ def client_list():
         "preparer/client_list.html",
         clients=clients,
         year=year,
-        tax_years=TAX_YEARS,
+        tax_years=ctx["tax_years"],
     )
 
 
 @preparer_bp.route("/client/<int:user_id>")
 @login_required
 def client_detail(user_id: int):
-    year         = int(request.args.get("year", CURRENT_YEAR))
+    ctx          = _tax_year_context()
+    year         = int(request.args.get("year", ctx["current_year"]))
     compare_year = int(request.args.get("compare_year", 0)) or None
 
     from portal.database import get_user_by_id, get_questionnaire, get_uploads
@@ -272,7 +277,7 @@ def client_detail(user_id: int):
         user=user,
         year=year,
         compare_year=compare_year,
-        tax_years=TAX_YEARS,
+        tax_years=ctx["tax_years"],
         doc_status=doc_status,
         parsed_docs=parsed_docs,
         all_flags=all_flags,
@@ -289,7 +294,7 @@ def client_detail(user_id: int):
 def reparse(user_id: int, upload_id: int):
     use_ocr = request.form.get("ocr") == "1"
     reparse_document(_preparer_db(), upload_id, use_ocr=use_ocr)
-    year = int(request.form.get("year", CURRENT_YEAR))
+    year = int(request.form.get("year", _tax_year_context()["current_year"]))
     flash("Document re-parsed.", "success")
     return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
 
@@ -301,7 +306,7 @@ def azure_enhance(user_id: int, upload_id: int):
     cfg = site_config.load()
     endpoint = cfg.get("azure_endpoint", "")
     api_key  = cfg.get("azure_api_key", "")
-    year     = int(request.form.get("year", CURRENT_YEAR))
+    year     = int(request.form.get("year", _tax_year_context()["current_year"]))
 
     if not (cfg.get("azure_enabled") and endpoint and api_key):
         flash("Azure is not configured. Please update Settings first.", "error")

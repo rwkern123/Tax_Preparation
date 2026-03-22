@@ -33,9 +33,12 @@ def _parse_covered_noncovered_totals(text: str) -> dict:
     # Amount token: optional leading minus or parens, optional $, digits with commas, optional .xx
     _AMT = r"\(?-?\$?\s*[\d,]+(?:\.\d{2})?\)?"
 
-    # Split text into sections on each "BASIS IS …" heading.
+    # Split text into sections on each "BASIS IS …" or "Box A/B/D/E" or "COVERED/NONCOVERED" heading.
     section_re = re.compile(
-        r"(basis\s+is\s+(?:reported\s+to\s+the\s+irs|not\s+reported(?:\s+to\s+the\s+irs)?|missing))",
+        r"(basis\s+is\s+(?:reported\s+to\s+the\s+irs|not\s+reported(?:\s+to\s+the\s+irs)?|missing)"
+        r"|transactions\s+(?:reported\s+)?(?:for\s+which\s+basis\s+is\s+(?:not\s+)?reported)"
+        r"|box\s+[abcdef]\s*[:\-]?\s*(?:short|long)[-\s]term\s+(?:covered|noncovered)"
+        r"|\b(?:covered|noncovered)\s+(?:short|long)[-\s]term)",
         re.IGNORECASE,
     )
     parts = section_re.split(text)
@@ -48,7 +51,8 @@ def _parse_covered_noncovered_totals(text: str) -> dict:
         i += 2
 
         # Determine whether this section is "covered" (reported) or "noncovered"
-        if re.search(r"not\s+reported|missing", heading):
+        is_noncovered = bool(re.search(r"not\s+reported|missing|noncovered|box\s+[bef]\b", heading))
+        if is_noncovered:
             st_key = "short_term_noncovered"
             lt_key = "long_term_noncovered"
         else:
@@ -105,11 +109,11 @@ def parse_brokerage_1099_text(text: str) -> Brokerage1099Data:
     )
 
     summary_labels = {
-        "proceeds": r"total\s+proceeds",
-        "cost_basis": r"cost\s+basis",
-        "wash_sales": r"wash\s+sale",
-        "short_term_gain_loss": r"short[-\s]term\s+(?:gain|loss)",
-        "long_term_gain_loss": r"long[-\s]term\s+(?:gain|loss)",
+        "proceeds": r"(?:net|total|gross)\s+proceeds",
+        "cost_basis": r"(?:net\s+)?cost\s+(?:or\s+other\s+)?basis",
+        "wash_sales": r"wash\s+sale(?:\s+loss(?:\s+disallowed)?)?",
+        "short_term_gain_loss": r"(?:net\s+)?short[-\s]term\s+(?:gain|loss)",
+        "long_term_gain_loss": r"(?:net\s+)?long[-\s]term\s+(?:gain|loss)",
     }
     for key, pattern in summary_labels.items():
         data.b_summary[key] = _money(pattern, text)

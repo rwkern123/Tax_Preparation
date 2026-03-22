@@ -319,13 +319,21 @@
                   <tr><th colspan="2" class="table-light small">Interest (1099-INT)</th></tr>
                   <tr><td>Interest Income</td><td class="amount">{{ b.int_interest_income | fmt_amount }}</td></tr>
                   <tr><td>US Treasury Interest</td><td class="amount">{{ b.int_us_treasury | fmt_amount }}</td></tr>
-                  {% if b.b_summary %}
                   <tr><th colspan="2" class="table-light small">Sales Summary (1099-B)</th></tr>
-                  <tr><td>Proceeds</td><td class="amount">{{ b.b_summary.proceeds | fmt_amount }}</td></tr>
-                  <tr><td>Cost Basis</td><td class="amount">{{ b.b_summary.cost_basis | fmt_amount }}</td></tr>
-                  <tr><td>Wash Sales</td><td class="amount">{{ b.b_summary.wash_sales | fmt_amount }}</td></tr>
-                  <tr><td>Short-Term G/L</td><td class="amount">{{ b.b_summary.short_term_gain_loss | fmt_amount }}</td></tr>
-                  <tr><td>Long-Term G/L</td><td class="amount">{{ b.b_summary.long_term_gain_loss | fmt_amount }}</td></tr>
+                  <tr><td>Proceeds</td><td class="amount">{{ b.b_summary.get('proceeds') | fmt_amount }}</td></tr>
+                  <tr><td>Cost Basis</td><td class="amount">{{ b.b_summary.get('cost_basis') | fmt_amount }}</td></tr>
+                  <tr><td>Wash Sales</td><td class="amount">{{ b.b_summary.get('wash_sales') | fmt_amount }}</td></tr>
+                  <tr><td>Short-Term G/L</td><td class="amount">{{ b.b_summary.get('short_term_gain_loss') | fmt_amount }}</td></tr>
+                  <tr><td>Long-Term G/L</td><td class="amount">{{ b.b_summary.get('long_term_gain_loss') | fmt_amount }}</td></tr>
+                  {% if b.b_short_term_covered is not none or b.b_short_term_noncovered is not none or b.b_long_term_covered is not none or b.b_long_term_noncovered is not none %}
+                  <tr><th colspan="2" class="table-light small">Gain/Loss by IRS Reporting Status</th></tr>
+                  <tr><td>Short-Term Covered</td><td class="amount">{{ b.b_short_term_covered | fmt_amount }}</td></tr>
+                  <tr><td>Short-Term Non-Covered</td><td class="amount">{{ b.b_short_term_noncovered | fmt_amount }}</td></tr>
+                  <tr><td>Long-Term Covered</td><td class="amount">{{ b.b_long_term_covered | fmt_amount }}</td></tr>
+                  <tr><td>Long-Term Non-Covered</td><td class="amount">{{ b.b_long_term_noncovered | fmt_amount }}</td></tr>
+                  {% endif %}
+                  {% if b.section_1256_net_gain_loss is not none %}
+                  <tr><td>Section 1256 Net G/L</td><td class="amount">{{ b.section_1256_net_gain_loss | fmt_amount }}</td></tr>
                   {% endif %}
                 </table>
               </div>

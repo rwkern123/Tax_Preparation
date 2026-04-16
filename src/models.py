@@ -120,6 +120,27 @@ class Form1098Data:
 
 
 @dataclass
+class Form1099NECData:
+    payer_name: Optional[str] = None
+    payer_tin: Optional[str] = None
+    recipient_name: Optional[str] = None
+    recipient_tin: Optional[str] = None
+    recipient_street: Optional[str] = None
+    recipient_city_state_zip: Optional[str] = None
+    account_number: Optional[str] = None
+    year: Optional[int] = None
+    box1_nonemployee_compensation: Optional[float] = None
+    box2_direct_sales: bool = False
+    box3_excess_golden_parachute: Optional[float] = None
+    box4_fed_withholding: Optional[float] = None
+    box5_state_tax_withheld: Optional[float] = None
+    box6_state_payer_no: Optional[str] = None
+    box7_state_income: Optional[float] = None
+    is_corrected: bool = False
+    confidence: float = 0.0
+
+
+@dataclass
 class PriorYearReturnData:
     """Key fields extracted from a prior-year Form 1040 tax return PDF."""
 
@@ -180,6 +201,7 @@ class ExtractionResult:
     brokerage_1099: List[Brokerage1099Data] = field(default_factory=list)
     brokerage_1099_trades: List[Brokerage1099Trade] = field(default_factory=list)
     form_1098: List[Form1098Data] = field(default_factory=list)
+    form_1099_nec: List[Form1099NECData] = field(default_factory=list)
     unknown: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -188,5 +210,6 @@ class ExtractionResult:
             "brokerage_1099": [asdict(item) for item in self.brokerage_1099],
             "brokerage_1099_trades": [asdict(item) for item in self.brokerage_1099_trades],
             "form_1098": [asdict(item) for item in self.form_1098],
+            "form_1099_nec": [asdict(item) for item in self.form_1099_nec],
             "unknown": self.unknown,
         }

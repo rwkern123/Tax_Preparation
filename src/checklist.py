@@ -61,7 +61,26 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
             )
     lines.append("")
 
-    lines += ["## E) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]
+    lines += ["## E) 1099-NEC / Self-Employment Income"]
+    if data.form_1099_nec:
+        for i, nec in enumerate(data.form_1099_nec, 1):
+            withheld_part = f", Box 4 Fed Withheld={_fmt_money(nec.box4_fed_withholding)}" if nec.box4_fed_withholding else ""
+            lines.append(
+                f"{i}. Enter 1099-NEC from {nec.payer_name or 'Unknown Payer'}: "
+                f"Box 1 Nonemployee Comp={_fmt_money(nec.box1_nonemployee_compensation)}{withheld_part}."
+            )
+            if nec.box1_nonemployee_compensation and nec.box1_nonemployee_compensation > 0:
+                lines.append(
+                    f"   - Self-employment income — determine if Schedule C applies. "
+                    f"Evaluate SE tax and estimated payment obligations."
+                )
+            if nec.is_corrected:
+                lines.append(f"   - NOTE: This is a CORRECTED 1099-NEC. Verify against original.")
+    else:
+        lines.append("1. No 1099-NEC detected. Ask whether client received any freelance, contract, or gig income.")
+    lines.append("")
+
+    lines += ["## F) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]
     if data.form_1098:
         for idx, form in enumerate(data.form_1098, 2):
             lines.append(
@@ -77,11 +96,11 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
     lines.append("")
 
     lines += [
-        "## F) Review & diagnostics",
+        "## G) Review & diagnostics",
         "1. Reconcile total W-2 wages and withholding against source forms.",
         "2. Assess withholding reasonableness and compare with prior-year fields if available.",
         "",
-        "## G) E-file/admin (placeholder)",
+        "## H) E-file/admin (placeholder)",
         "1. Run final diagnostics and complete e-file authorization workflow.",
     ]
 

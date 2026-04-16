@@ -3,6 +3,10 @@ from __future__ import annotations
 from src.models import ExtractionResult
 
 
+def _fmt_money(v: float | None) -> str:
+    return "N/A" if v is None else f"${v:,.2f}"
+
+
 def generate_questions(client: str, data: ExtractionResult) -> str:
     q: list[str] = [f"# Questions For Client - {client}", ""]
 
@@ -41,6 +45,22 @@ def generate_questions(client: str, data: ExtractionResult) -> str:
             q.append("- Form 1098 detected without a clear payer/borrower name. Please confirm whether this is taxpayer, spouse, or joint.")
         elif "joint" not in form.payer_name.lower() and len(data.w2) > 1:
             q.append("- Form 1098 appears individual while return may be MFJ. Confirm whether mortgage interest is individual or joint and how title/loan are held.")
+
+    for nec in data.form_1099_nec:
+        if nec.box1_nonemployee_compensation and nec.box1_nonemployee_compensation > 0:
+            q.append(
+                f"- 1099-NEC received from {nec.payer_name or 'unknown payer'} "
+                f"({_fmt_money(nec.box1_nonemployee_compensation)}). "
+                f"Did you have any business expenses related to this work to report on Schedule C?"
+            )
+        if not nec.box4_fed_withholding:
+            q.append(
+                "- No federal withholding on 1099-NEC. Were estimated tax payments made during the year? "
+                "If not, an underpayment penalty may apply."
+            )
+
+    if not data.form_1099_nec and not data.w2:
+        q.append("- No W-2 or 1099-NEC found. Did you have any wage or self-employment income this year?")
 
     if len(q) == 2:
         q.append("- No follow-up items detected from available source documents.")

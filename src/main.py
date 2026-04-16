@@ -20,6 +20,7 @@ from src.extract.form_1099b_trades import (
     trade_to_tax_row,
 )
 from src.extract.form_1098 import parse_1098_text
+from src.extract.form_1099_nec import parse_1099_nec_text
 from src.extract.azure_w2 import AZURE_CONFIDENCE_THRESHOLD, parse_w2_azure
 from src.extract.azure_1099 import AZURE_CONFIDENCE_THRESHOLD as _1099_AZURE_THRESH, parse_brokerage_1099_azure
 from src.extract.generic_pdf import get_document_text
@@ -219,6 +220,11 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
                 extraction.form_1098.append(parsed)
                 key_fields = asdict(parsed)
                 issuer = parsed.lender_name
+            elif doc_type == "form_1099_nec":
+                parsed = parse_1099_nec_text(text)
+                extraction.form_1099_nec.append(parsed)
+                key_fields = asdict(parsed)
+                issuer = parsed.payer_name
             else:
                 extraction.unknown.append({"file_name": path.name, "reason": "Unclassified"})
 

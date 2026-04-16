@@ -120,6 +120,61 @@ class Form1098Data:
 
 
 @dataclass
+class PriorYearReturnData:
+    """Key fields extracted from a prior-year Form 1040 tax return PDF."""
+
+    # Header / identity
+    year: Optional[int] = None
+    taxpayer_name: Optional[str] = None
+    taxpayer_ssn: Optional[str] = None
+    spouse_name: Optional[str] = None
+    spouse_ssn: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    filing_status: Optional[str] = None
+
+    # Income (Form 1040 lines)
+    line_1a_w2_wages: Optional[float] = None          # W-2 box 1 total
+    line_1z_total_wages: Optional[float] = None       # Sum of lines 1a–1h
+    line_2b_taxable_interest: Optional[float] = None
+    line_3a_qualified_dividends: Optional[float] = None
+    line_3b_ordinary_dividends: Optional[float] = None
+    line_4b_ira_taxable: Optional[float] = None
+    line_5b_pension_taxable: Optional[float] = None
+    line_6b_ss_taxable: Optional[float] = None
+    line_7_capital_gain_loss: Optional[float] = None
+    line_8_other_income: Optional[float] = None       # Schedule 1 line 10
+    line_9_total_income: Optional[float] = None
+    line_10_adjustments: Optional[float] = None
+    line_11_agi: Optional[float] = None
+    line_12_deductions: Optional[float] = None        # Standard or itemized
+    line_13_qbi_deduction: Optional[float] = None
+    line_15_taxable_income: Optional[float] = None
+
+    # Tax & credits
+    line_16_tax: Optional[float] = None
+    line_24_total_tax: Optional[float] = None
+
+    # Payments
+    line_25a_w2_withholding: Optional[float] = None
+    line_25b_1099_withholding: Optional[float] = None
+    line_25d_total_withholding: Optional[float] = None
+    line_26_estimated_payments: Optional[float] = None
+    line_33_total_payments: Optional[float] = None
+
+    # Refund / balance due
+    line_34_overpayment: Optional[float] = None
+    line_35a_refund: Optional[float] = None
+    line_37_amount_owed: Optional[float] = None
+    line_38_estimated_tax_penalty: Optional[float] = None
+
+    confidence: float = 0.0
+    extraction_source: str = "local"  # "local" | "azure"
+
+
+@dataclass
 class ExtractionResult:
     w2: List[W2Data] = field(default_factory=list)
     brokerage_1099: List[Brokerage1099Data] = field(default_factory=list)

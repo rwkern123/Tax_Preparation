@@ -80,7 +80,33 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
         lines.append("1. No 1099-NEC detected. Ask whether client received any freelance, contract, or gig income.")
     lines.append("")
 
-    lines += ["## F) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]
+    lines += ["## F) 1099-R Retirement / Pension / IRA Distributions"]
+    if data.form_1099_r:
+        for i, r in enumerate(data.form_1099_r, 1):
+            code_part = f", Code={r.box7_distribution_code}" if r.box7_distribution_code else ""
+            withheld_part = f", Fed Withheld={_fmt_money(r.box4_fed_withholding)}" if r.box4_fed_withholding else ""
+            lines.append(
+                f"{i}. Enter 1099-R from {r.payer_name or 'Unknown Payer'}: "
+                f"Gross={_fmt_money(r.box1_gross_distribution)}, Taxable={_fmt_money(r.box2a_taxable_amount)}"
+                f"{code_part}{withheld_part}."
+            )
+            if r.box7_distribution_code in ("1", "J"):
+                lines.append(
+                    f"   - Distribution code {r.box7_distribution_code} indicates early distribution — evaluate 10% penalty (Form 5329) and any exceptions."
+                )
+            if r.box7_distribution_code == "G":
+                lines.append("   - Code G = direct rollover. Confirm rollover destination and verify no taxable amount.")
+            if r.box7_ira_sep_simple:
+                lines.append("   - IRA/SEP/SIMPLE box checked. Confirm basis (Form 8606) if after-tax contributions exist.")
+            if r.box2b_taxable_not_determined:
+                lines.append("   - 'Taxable amount not determined' checked — manually determine taxable portion.")
+            if r.is_corrected:
+                lines.append("   - NOTE: This is a CORRECTED 1099-R. Verify against original.")
+    else:
+        lines.append("1. No 1099-R detected. Ask whether client received any retirement, pension, IRA, or annuity distributions.")
+    lines.append("")
+
+    lines += ["## G) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]
     if data.form_1098:
         for idx, form in enumerate(data.form_1098, 2):
             lines.append(
@@ -96,11 +122,11 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
     lines.append("")
 
     lines += [
-        "## G) Review & diagnostics",
+        "## H) Review & diagnostics",
         "1. Reconcile total W-2 wages and withholding against source forms.",
         "2. Assess withholding reasonableness and compare with prior-year fields if available.",
         "",
-        "## H) E-file/admin (placeholder)",
+        "## I) E-file/admin (placeholder)",
         "1. Run final diagnostics and complete e-file authorization workflow.",
     ]
 

@@ -59,6 +59,29 @@ def generate_questions(client: str, data: ExtractionResult) -> str:
                 "If not, an underpayment penalty may apply."
             )
 
+    for r in data.form_1099_r:
+        if r.box7_distribution_code in ("1", "J"):
+            q.append(
+                f"- Early retirement distribution (code {r.box7_distribution_code}) from "
+                f"{r.payer_name or 'unknown payer'} ({_fmt_money(r.box1_gross_distribution)}). "
+                f"Do any exceptions to the 10% early withdrawal penalty apply (e.g., disability, medical, separation from service at age 55+)?"
+            )
+        if r.box7_ira_sep_simple and r.box2b_taxable_not_determined:
+            q.append(
+                "- IRA/SEP/SIMPLE distribution with taxable amount not determined. "
+                "Have you made any nondeductible (after-tax) IRA contributions? If so, Form 8606 is required to calculate the taxable portion."
+            )
+        if r.box7_distribution_code == "G":
+            q.append(
+                f"- Rollover distribution from {r.payer_name or 'unknown payer'}. "
+                f"Please confirm the rollover was deposited into the destination account within 60 days."
+            )
+        if not r.box4_fed_withholding:
+            q.append(
+                f"- No federal tax was withheld on the distribution from {r.payer_name or 'unknown payer'}. "
+                f"Were estimated payments made to cover the tax due on this distribution?"
+            )
+
     if not data.form_1099_nec and not data.w2:
         q.append("- No W-2 or 1099-NEC found. Did you have any wage or self-employment income this year?")
 

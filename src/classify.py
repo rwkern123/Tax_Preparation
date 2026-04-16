@@ -15,6 +15,7 @@ BROKER_PATTERNS = [
 ]
 FORM_1098_PATTERNS = [r"1098", r"form\s*1098", r"mortgage interest statement", r"mortgage interest received"]
 FORM_1099_NEC_PATTERNS = [r"1099-nec", r"1099\s*nec", r"nonemployee\s+compensation", r"non-?employee\s+compensation"]
+FORM_1099_R_PATTERNS = [r"1099-r\b", r"1099\s*-?\s*r\b", r"distributions?\s+from\s+pensions?", r"gross\s+distribution", r"IRA\s*/\s*SEP\s*/\s*SIMPLE"]
 
 
 def _score(patterns: list[str], haystack: str) -> float:
@@ -77,6 +78,7 @@ def classify_document(file_path: Path, text: str) -> tuple[str, float, int | Non
         "brokerage_1099": _score(BROKER_PATTERNS, haystack),
         "form_1098": _score(FORM_1098_PATTERNS, haystack),
         "form_1099_nec": _score(FORM_1099_NEC_PATTERNS, haystack),
+        "form_1099_r": _score(FORM_1099_R_PATTERNS, haystack),
     }
 
     doc_type, confidence = max(scores.items(), key=lambda kv: kv[1])

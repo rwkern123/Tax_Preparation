@@ -9,7 +9,7 @@ Forms that clients receive and bring to their preparer — need extraction suppo
 
 | Form | Description | Priority |
 |---|---|---|
-| **1099-R** | Retirement / IRA / pension distributions | High |
+| ~~**1099-R**~~ | ~~Retirement / IRA / pension distributions~~ | ~~High~~ — **Completed April 2026** |
 | **SSA-1099** | Social Security benefits | High |
 | **1099-G** | Unemployment compensation, state tax refunds | High |
 | **1099-MISC** | Royalties, rent, prizes, attorney fees | Medium |
@@ -19,6 +19,7 @@ Forms that clients receive and bring to their preparer — need extraction suppo
 
 **Notes:**
 - 1099-NEC extractor was completed April 2026 — serves as the template for the above.
+- 1099-R extractor was completed April 2026 — dataclass, parser, classifier, main.py wiring, checklist section F, questions.
 - Each form requires: dataclass in `models.py`, extractor in `src/extract/`, classification patterns in `classify.py`, wiring in `main.py`, and checklist/questions entries.
 
 ---

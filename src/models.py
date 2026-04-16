@@ -141,6 +141,30 @@ class Form1099NECData:
 
 
 @dataclass
+class Form1099RData:
+    payer_name: Optional[str] = None
+    payer_tin: Optional[str] = None
+    recipient_name: Optional[str] = None
+    recipient_tin: Optional[str] = None
+    account_number: Optional[str] = None
+    year: Optional[int] = None
+    box1_gross_distribution: Optional[float] = None
+    box2a_taxable_amount: Optional[float] = None
+    box2b_taxable_not_determined: bool = False
+    box2b_total_distribution: bool = False
+    box3_capital_gain: Optional[float] = None
+    box4_fed_withholding: Optional[float] = None
+    box5_employee_contributions: Optional[float] = None
+    box7_distribution_code: Optional[str] = None
+    box7_ira_sep_simple: bool = False
+    box14_state_tax_withheld: Optional[float] = None
+    box15_state_payer_no: Optional[str] = None
+    box16_state_distribution: Optional[float] = None
+    is_corrected: bool = False
+    confidence: float = 0.0
+
+
+@dataclass
 class PriorYearReturnData:
     """Key fields extracted from a prior-year Form 1040 tax return PDF."""
 
@@ -202,6 +226,7 @@ class ExtractionResult:
     brokerage_1099_trades: List[Brokerage1099Trade] = field(default_factory=list)
     form_1098: List[Form1098Data] = field(default_factory=list)
     form_1099_nec: List[Form1099NECData] = field(default_factory=list)
+    form_1099_r: List[Form1099RData] = field(default_factory=list)
     unknown: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -211,5 +236,6 @@ class ExtractionResult:
             "brokerage_1099_trades": [asdict(item) for item in self.brokerage_1099_trades],
             "form_1098": [asdict(item) for item in self.form_1098],
             "form_1099_nec": [asdict(item) for item in self.form_1099_nec],
+            "form_1099_r": [asdict(item) for item in self.form_1099_r],
             "unknown": self.unknown,
         }

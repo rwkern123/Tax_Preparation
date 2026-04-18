@@ -162,7 +162,7 @@ def _extract_names_and_ssns(
     # Match taxpayer name + SSN on same line (TurboTax puts them on one line)
     tp_m = re.search(
         r"(?:Your\s+first\s+name[^\n]*Last\s+name[^\n]*\n\s*)"
-        r"([A-Za-z][A-Za-z\s\.\-']{1,40}?)\s{2,}(\d{3}[\s\-]\d{2}[\s\-]\d{4})",
+        r"([A-Za-z][A-Za-z\s\.\-']{1,40}?)\s+(\d{3}[\s\-]\d{2}[\s\-]\d{4})",
         text, re.IGNORECASE,
     )
     if tp_m:
@@ -201,7 +201,7 @@ def _extract_names_and_ssns(
     # -- Spouse (MFJ) --
     sp_m = re.search(
         r"(?:joint\s+return[^\n]*\n\s*)"
-        r"([A-Za-z][A-Za-z\s\.\-']{1,40}?)\s{2,}(\d{3}[\s\-]\d{2}[\s\-]\d{4})",
+        r"([A-Za-z][A-Za-z\s\.\-']{1,40}?)\s+(\d{3}[\s\-]\d{2}[\s\-]\d{4})",
         text, re.IGNORECASE,
     )
     if sp_m:
@@ -212,7 +212,7 @@ def _extract_names_and_ssns(
         # Alternative: look for "Spouse's social security number" label then find value
         sp_ssn_m = re.search(
             r"Spouse['']s\s+social\s+security\s+number[^\n]{0,20}\n\s*([A-Za-z][^\n]{2,30}?)"
-            r"\s{3,}(\d{3}[\s\-]\d{2}[\s\-]\d{4})",
+            r"\s+(\d{3}[\s\-]\d{2}[\s\-]\d{4})",
             text, re.IGNORECASE,
         )
         if sp_ssn_m:
@@ -453,13 +453,13 @@ def _extract_schedule_a(text: str, data: PriorYearReturnData) -> None:
     """
     data.sched_a_present = bool(
         re.search(r"SCHEDULE\s+A\s*\(Form\s+1040\)", text, re.IGNORECASE)
-        or re.search(r"(?m)^SCHEDULE\s+A\b", text, re.IGNORECASE)
+        or re.search(r"^SCHEDULE\s+A\b", text, re.IGNORECASE | re.MULTILINE)
     )
     if not data.sched_a_present:
         return
     window = _window_after(
         text,
-        r"SCHEDULE\s+A\s*\(Form\s+1040\)|(?m)^SCHEDULE\s+A\b",
+        r"SCHEDULE\s+A\s*\(Form\s+1040\)|SCHEDULE\s+A\b",
         window=4000,
     )
     if not window:

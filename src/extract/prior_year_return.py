@@ -180,6 +180,24 @@ def _extract_names_and_ssns(
             raw = re.sub(r"[\s\-]", "", tp_m2.group(2))
             tp_ssn = f"{raw[:3]}-{raw[3:5]}-{raw[5:]}"
 
+    # Fallback: pdfplumber sometimes extracts columns separately — name label on
+    # one line, name value on next, then SSN label, then SSN value.
+    if tp_name is None:
+        nm = re.search(
+            r"Your\s+first\s+name[^\n]*\n\s*([A-Za-z][A-Za-z\s\.\-']{1,40}?)\s*\n",
+            text, re.IGNORECASE,
+        )
+        if nm:
+            tp_name = nm.group(1).strip()
+    if tp_ssn is None:
+        ssn_m = re.search(
+            r"Your\s+social\s+security\s+number[^\n]{0,20}\n\s*(\d{3}[\s\-]\d{2}[\s\-]\d{4})",
+            text, re.IGNORECASE,
+        )
+        if ssn_m:
+            raw = re.sub(r"[\s\-]", "", ssn_m.group(1))
+            tp_ssn = f"{raw[:3]}-{raw[3:5]}-{raw[5:]}"
+
     # -- Spouse (MFJ) --
     sp_m = re.search(
         r"(?:joint\s+return[^\n]*\n\s*)"
@@ -327,26 +345,35 @@ def _window_after(text: str, anchor_pattern: str, window: int = 3000) -> str:
 
 def _extract_occupations(text: str, data: PriorYearReturnData) -> None:
     """Extract taxpayer and spouse occupations from 1040 header area."""
-    # TurboTax prints occupation label followed by value on next line
-    m = re.search(
-        r"occupation[^\n]{0,10}\n\s*([A-Za-z][A-Za-z\s\-]{1,30})",
-        text, re.IGNORECASE,
-    )
-    if m:
-        data.taxpayer_occupation = m.group(1).strip()
-    # Spouse occupation — look for second occurrence of "occupation" label
-    occ_positions = [mo.start() for mo in re.finditer(r"occupation", text, re.IGNORECASE)]
-    if len(occ_positions) >= 2:
-        second_block = text[occ_positions[1]: occ_positions[1] + 200]
-        m2 = re.search(
+    def _parse_occupation(block: str) -> Optional[str]:
+        """Try label+next-line, then label+same-line."""
+        m = re.search(
             r"occupation[^\n]{0,10}\n\s*([A-Za-z][A-Za-z\s\-]{1,30})",
-            second_block, re.IGNORECASE,
+            block, re.IGNORECASE,
+        )
+        if m:
+            return m.group(1).strip()
+        # Same-line: "Occupation  Engineer" or "Occupation: Engineer"
+        m2 = re.search(
+            r"occupation[\s:]{1,5}([A-Za-z][A-Za-z\s\-]{1,30})",
+            block, re.IGNORECASE,
         )
         if m2:
-            candidate = m2.group(1).strip()
-            # Don't duplicate taxpayer occupation
-            if candidate != data.taxpayer_occupation:
-                data.spouse_occupation = candidate
+            val = m2.group(1).strip()
+            # Exclude generic label words that bleed in from adjacent columns
+            if val.lower() not in ("if a joint return", "spouse", "your"):
+                return val
+        return None
+
+    occ_positions = [mo.start() for mo in re.finditer(r"occupation", text, re.IGNORECASE)]
+
+    if occ_positions:
+        data.taxpayer_occupation = _parse_occupation(text[occ_positions[0]: occ_positions[0] + 200])
+
+    if len(occ_positions) >= 2:
+        candidate = _parse_occupation(text[occ_positions[1]: occ_positions[1] + 200])
+        if candidate and candidate != data.taxpayer_occupation:
+            data.spouse_occupation = candidate
 
 
 def _extract_dependents(text: str, data: PriorYearReturnData) -> None:
@@ -416,18 +443,23 @@ def _extract_schedule_1_adjustments(text: str, data: PriorYearReturnData) -> Non
 
 
 def _extract_schedule_a(text: str, data: PriorYearReturnData) -> None:
-    """Extract Schedule A — Itemized Deductions."""
-    data.sched_a_present = _form_present(
-        text,
-        r"SCHEDULE\s+A\b",
-        r"Schedule\s+A\s*\(Form\s+1040\)",
-        r"Itemized\s+Deductions",
+    """Extract Schedule A — Itemized Deductions.
+
+    TurboTax Line 12 always reads "Standard deduction or itemized deductions
+    (from Schedule A)" regardless of which was taken, so generic patterns like
+    "SCHEDULE A" or "Itemized Deductions" fire as false positives.  We require
+    the actual form-page header "SCHEDULE A (Form 1040)" which only appears when
+    Schedule A was actually generated and filed.
+    """
+    data.sched_a_present = bool(
+        re.search(r"SCHEDULE\s+A\s*\(Form\s+1040\)", text, re.IGNORECASE)
+        or re.search(r"(?m)^SCHEDULE\s+A\b", text, re.IGNORECASE)
     )
     if not data.sched_a_present:
         return
     window = _window_after(
         text,
-        r"SCHEDULE\s+A\b|Schedule\s+A\s*\(Form\s+1040\)|Itemized\s+Deductions",
+        r"SCHEDULE\s+A\s*\(Form\s+1040\)|(?m)^SCHEDULE\s+A\b",
         window=4000,
     )
     if not window:

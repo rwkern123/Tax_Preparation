@@ -180,6 +180,13 @@ class PriorYearReturnData:
     zip_code: Optional[str] = None
     filing_status: Optional[str] = None
 
+    # Additional 1040 header fields
+    taxpayer_occupation: Optional[str] = None
+    spouse_occupation: Optional[str] = None
+    dependents: List[Dict] = field(default_factory=list)  # [{name, ssn, relationship, ctc_eligible, odc_eligible}]
+    refund_applied_forward: Optional[float] = None   # Line 36 — refund applied to next-year estimated tax
+    extension_filed: bool = False                    # Form 4868 indicator
+
     # Income (Form 1040 lines)
     line_1a_w2_wages: Optional[float] = None          # W-2 box 1 total
     line_1z_total_wages: Optional[float] = None       # Sum of lines 1a–1h
@@ -197,6 +204,113 @@ class PriorYearReturnData:
     line_12_deductions: Optional[float] = None        # Standard or itemized
     line_13_qbi_deduction: Optional[float] = None
     line_15_taxable_income: Optional[float] = None
+
+    # Schedule 1 adjustments
+    sched1_educator_expenses: Optional[float] = None
+    sched1_hsa_deduction: Optional[float] = None
+    sched1_ira_deduction: Optional[float] = None
+    sched1_student_loan_interest: Optional[float] = None
+    sched1_nol_deduction: Optional[float] = None
+
+    # Schedule A — Itemized Deductions
+    sched_a_present: bool = False
+    sched_a_medical_dental: Optional[float] = None
+    sched_a_salt_total: Optional[float] = None
+    sched_a_mortgage_interest: Optional[float] = None
+    sched_a_charitable_cash: Optional[float] = None
+    sched_a_charitable_noncash: Optional[float] = None
+    sched_a_charitable_carryforward: Optional[float] = None
+    sched_a_investment_interest: Optional[float] = None
+    sched_a_total_itemized: Optional[float] = None
+
+    # Schedule B — Interest & Dividends
+    sched_b_present: bool = False
+    sched_b_foreign_account: Optional[bool] = None  # Part III Q7a
+
+    # Schedule C — Business Activity
+    sched_c_present: bool = False
+    sched_c_businesses: List[Dict] = field(default_factory=list)  # [{name, ein, accounting_method, net_profit_loss}]
+
+    # Schedule D — Capital Gains & Losses
+    sched_d_present: bool = False
+    sched_d_net_stcg: Optional[float] = None
+    sched_d_net_ltcg: Optional[float] = None
+    sched_d_capital_loss_carryforward: Optional[float] = None
+
+    # Schedule E — Rental & Pass-Through Activity
+    sched_e_present: bool = False
+    sched_e_rental_properties: List[str] = field(default_factory=list)
+    sched_e_total_rental_income: Optional[float] = None
+    sched_e_total_rental_loss: Optional[float] = None
+    sched_e_k1_partnerships: bool = False
+    sched_e_k1_s_corps: bool = False
+    sched_e_k1_trusts: bool = False
+
+    # Form 4562 — Depreciation & Section 179
+    form_4562_present: bool = False
+    form_4562_section_179_deduction: Optional[float] = None
+    form_4562_section_179_carryforward: Optional[float] = None
+    form_4562_bonus_depreciation: Optional[float] = None
+
+    # Form 8582 — Passive Activity Loss Limitations
+    form_8582_present: bool = False
+    form_8582_pal_carryforward: Optional[float] = None
+    form_8582_rental_loss_carryforward: Optional[float] = None
+
+    # Form 8606 — IRA Basis Tracking
+    form_8606_present: bool = False
+    form_8606_ira_basis: Optional[float] = None
+    form_8606_nondeductible_contributions: Optional[float] = None
+
+    # Form 8829 — Home Office
+    form_8829_present: bool = False
+    form_8829_carryforward: Optional[float] = None
+
+    # Form 8995 / 8995-A — Qualified Business Income
+    form_8995_present: bool = False
+    form_8995_qbi_loss_carryforward: Optional[float] = None
+
+    # Form 1116 — Foreign Tax Credit
+    form_1116_present: bool = False
+    form_1116_foreign_tax_credit: Optional[float] = None
+    form_1116_carryforward: Optional[float] = None
+
+    # Form 3800 — General Business Credit
+    form_3800_present: bool = False
+    form_3800_credit_carryforward: Optional[float] = None
+
+    # Form 6251 — AMT
+    form_6251_present: bool = False
+    form_6251_amt: Optional[float] = None
+    form_6251_amt_credit_carryforward: Optional[float] = None
+
+    # Form 6252 — Installment Sales
+    form_6252_present: bool = False
+    form_6252_gross_profit_pct: Optional[float] = None
+
+    # Form 8283 — Noncash Charitable Contributions
+    form_8283_present: bool = False
+
+    # Form 8889 — Health Savings Accounts
+    form_8889_present: bool = False
+    form_8889_hsa_contributions: Optional[float] = None
+    form_8889_excess_contributions: Optional[float] = None
+
+    # Form 7203 — S-Corp Basis Tracking
+    form_7203_present: bool = False
+    form_7203_stock_basis: Optional[float] = None
+    form_7203_debt_basis: Optional[float] = None
+
+    # Form 6198 — At-Risk Limitations
+    form_6198_present: bool = False
+    form_6198_at_risk_carryforward: Optional[float] = None
+
+    # State returns
+    state_returns_filed: List[str] = field(default_factory=list)
+
+    # Elections & continuity indicators
+    election_real_estate_professional: bool = False
+    election_installment_sale: bool = False
 
     # Tax & credits
     line_16_tax: Optional[float] = None

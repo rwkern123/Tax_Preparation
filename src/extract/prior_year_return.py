@@ -312,6 +312,600 @@ def _line(
     return parse_amount_token(raw)
 
 
+def _form_present(text: str, *patterns: str) -> bool:
+    """Return True if any pattern matches in text (case-insensitive)."""
+    return any(re.search(p, text, re.IGNORECASE) for p in patterns)
+
+
+def _window_after(text: str, anchor_pattern: str, window: int = 3000) -> str:
+    """Return the text slice starting at the anchor match up to window chars."""
+    m = re.search(anchor_pattern, text, re.IGNORECASE)
+    if not m:
+        return ""
+    return text[m.start(): m.start() + window]
+
+
+def _extract_occupations(text: str, data: PriorYearReturnData) -> None:
+    """Extract taxpayer and spouse occupations from 1040 header area."""
+    # TurboTax prints occupation label followed by value on next line
+    m = re.search(
+        r"occupation[^\n]{0,10}\n\s*([A-Za-z][A-Za-z\s\-]{1,30})",
+        text, re.IGNORECASE,
+    )
+    if m:
+        data.taxpayer_occupation = m.group(1).strip()
+    # Spouse occupation — look for second occurrence of "occupation" label
+    occ_positions = [mo.start() for mo in re.finditer(r"occupation", text, re.IGNORECASE)]
+    if len(occ_positions) >= 2:
+        second_block = text[occ_positions[1]: occ_positions[1] + 200]
+        m2 = re.search(
+            r"occupation[^\n]{0,10}\n\s*([A-Za-z][A-Za-z\s\-]{1,30})",
+            second_block, re.IGNORECASE,
+        )
+        if m2:
+            candidate = m2.group(1).strip()
+            # Don't duplicate taxpayer occupation
+            if candidate != data.taxpayer_occupation:
+                data.spouse_occupation = candidate
+
+
+def _extract_dependents(text: str, data: PriorYearReturnData) -> None:
+    """Extract dependents from the 1040 dependents table."""
+    header_m = re.search(
+        r"Dependents\s*\(?see\s+instructions\)?[^\n]{0,100}\n",
+        text, re.IGNORECASE,
+    )
+    if not header_m:
+        return
+    # Search in a window after the header
+    window = text[header_m.end(): header_m.end() + 2000]
+    # Each dependent line contains an SSN-like pattern
+    dep_pattern = re.compile(
+        r"([A-Za-z][A-Za-z\s\.\-']{2,40}?)\s{2,}(\d{3}[\s\-]\d{2}[\s\-]\d{4})\s{2,}([A-Za-z\s]{2,20})",
+        re.IGNORECASE,
+    )
+    for dep_m in dep_pattern.finditer(window):
+        name = dep_m.group(1).strip()
+        raw_ssn = re.sub(r"[\s\-]", "", dep_m.group(2))
+        ssn = f"{raw_ssn[:3]}-{raw_ssn[3:5]}-{raw_ssn[5:]}"
+        relationship = dep_m.group(3).strip()
+        # Look for CTC/ODC eligibility in the surrounding context
+        context_start = dep_m.end()
+        context = window[context_start: context_start + 200]
+        ctc_eligible = bool(re.search(r"child\s+tax\s+credit", context, re.IGNORECASE))
+        odc_eligible = bool(re.search(r"credit\s+for\s+other\s+dependents", context, re.IGNORECASE))
+        data.dependents.append({
+            "name": name,
+            "ssn": ssn,
+            "relationship": relationship,
+            "ctc_eligible": ctc_eligible,
+            "odc_eligible": odc_eligible,
+        })
+
+
+def _extract_refund_applied_forward(text: str, data: PriorYearReturnData) -> None:
+    """Extract line 36 — refund applied to next-year estimated tax."""
+    m = re.search(
+        r"36\s+Amount.*?applied.*?estimated\s+tax[^\n]{0,200}?\.\s+36\s+([\d,]+\.(?:\d{2})?)",
+        text, re.IGNORECASE,
+    )
+    if m:
+        data.refund_applied_forward = parse_amount_token(m.group(1).rstrip("."))
+    else:
+        data.refund_applied_forward = _line(
+            r"36\s+Amount.*?estimated\s+tax", text
+        )
+
+
+def _extract_extension(text: str, data: PriorYearReturnData) -> None:
+    """Detect Form 4868 extension indicator."""
+    if re.search(r"\b4868\b", text):
+        data.extension_filed = True
+
+
+def _extract_schedule_1_adjustments(text: str, data: PriorYearReturnData) -> None:
+    """Extract Schedule 1 additional adjustments."""
+    window = _window_after(text, r"SCHEDULE\s+1\b|Schedule\s+1\s*\(Form\s+1040\)", window=5000)
+    if not window:
+        window = text  # Fall back to full text
+    data.sched1_educator_expenses = _line(r"11\s+Educator\s+expenses", window)
+    data.sched1_hsa_deduction = _line(r"13\s+Health\s+savings\s+account", window)
+    data.sched1_ira_deduction = _line(r"20\s+IRA\s+deduction", window)
+    data.sched1_student_loan_interest = _line(r"21\s+Student\s+loan\s+interest", window)
+    data.sched1_nol_deduction = _line(r"8\s*a\s+Net\s+operating\s+loss", window)
+
+
+def _extract_schedule_a(text: str, data: PriorYearReturnData) -> None:
+    """Extract Schedule A — Itemized Deductions."""
+    data.sched_a_present = _form_present(
+        text,
+        r"SCHEDULE\s+A\b",
+        r"Schedule\s+A\s*\(Form\s+1040\)",
+        r"Itemized\s+Deductions",
+    )
+    if not data.sched_a_present:
+        return
+    window = _window_after(
+        text,
+        r"SCHEDULE\s+A\b|Schedule\s+A\s*\(Form\s+1040\)|Itemized\s+Deductions",
+        window=4000,
+    )
+    if not window:
+        window = text
+    data.sched_a_medical_dental = _line(r"4\s+Multiply\s+line\s+3|medical.*dental", window)
+    data.sched_a_salt_total = _line(r"5\s*[ef]\s+Add\s+lines\s+5a|Total\s+taxes", window)
+    data.sched_a_mortgage_interest = _line(r"8\s*a\s+Home\s+mortgage\s+interest", window)
+    data.sched_a_charitable_cash = _line(r"11\s+Cash\s+or\s+check\s+contributions", window)
+    data.sched_a_charitable_noncash = _line(r"12\s+Other\s+than\s+by\s+cash", window)
+    data.sched_a_charitable_carryforward = _line(r"13\s+Carryover\s+from\s+prior\s+year", window)
+    data.sched_a_investment_interest = _line(r"9\s+Investment\s+interest", window)
+    data.sched_a_total_itemized = _line(r"17\s+Total\s+itemized\s+deductions", window)
+
+
+def _extract_schedule_b(text: str, data: PriorYearReturnData) -> None:
+    """Extract Schedule B — Interest & Dividends."""
+    data.sched_b_present = _form_present(
+        text,
+        r"SCHEDULE\s+B\b",
+        r"Schedule\s+B\s*\(Form",
+        r"Part\s+III.*Foreign\s+Accounts",
+    )
+    if not data.sched_b_present:
+        return
+    window = _window_after(text, r"SCHEDULE\s+B\b|Schedule\s+B\s*\(Form", window=3000)
+    if not window:
+        window = text
+    # Check for foreign account "Yes" answer in Part III question 7a
+    if re.search(r"7\s*a[^\n]{0,60}Yes", window, re.IGNORECASE):
+        data.sched_b_foreign_account = True
+    elif re.search(r"foreign\s+(?:financial\s+)?account[^\n]{0,80}Yes", window, re.IGNORECASE):
+        data.sched_b_foreign_account = True
+    elif re.search(r"7\s*a[^\n]{0,60}No", window, re.IGNORECASE):
+        data.sched_b_foreign_account = False
+
+
+def _extract_schedule_c(text: str, data: PriorYearReturnData) -> None:
+    """Extract Schedule C — Business Activity."""
+    data.sched_c_present = _form_present(
+        text,
+        r"SCHEDULE\s+C\b",
+        r"Schedule\s+C\s*\(Form",
+        r"Profit\s+or\s+Loss\s+From\s+Business",
+    )
+    if not data.sched_c_present:
+        return
+    # Find each Schedule C occurrence
+    for sch_m in re.finditer(
+        r"SCHEDULE\s+C\b|Schedule\s+C\s*\(Form|Profit\s+or\s+Loss\s+From\s+Business",
+        text, re.IGNORECASE,
+    ):
+        window = text[sch_m.start(): sch_m.start() + 3000]
+        # Business name
+        name_m = re.search(
+            r"(?:A\s+)?Principal\s+business[^\n]{0,60}\n\s*([^\n]{2,60})",
+            window, re.IGNORECASE,
+        )
+        if not name_m:
+            name_m = re.search(
+                r"Business\s+name[^\n]{0,10}\n\s*([^\n]{2,40})",
+                window, re.IGNORECASE,
+            )
+        biz_name = name_m.group(1).strip() if name_m else None
+        # EIN
+        ein_m = re.search(
+            r"(?:D\s+)?Employer\s+ID[^\n]{0,10}(\d{2}-\d{7})",
+            window, re.IGNORECASE,
+        )
+        ein = ein_m.group(1) if ein_m else None
+        # Accounting method
+        method_m = re.search(
+            r"(?:F\s+)?Accounting\s+method[^\n]{0,20}(Cash|Accrual|Other)",
+            window, re.IGNORECASE,
+        )
+        method = method_m.group(1) if method_m else None
+        # Net profit/loss (line 31)
+        net = _line(r"31\s+Net\s+profit\s+or\s+\(?loss\)?", window)
+        if biz_name or net is not None:
+            data.sched_c_businesses.append({
+                "name": biz_name,
+                "ein": ein,
+                "accounting_method": method,
+                "net_profit_loss": net,
+            })
+
+
+def _extract_schedule_d(text: str, data: PriorYearReturnData) -> None:
+    """Extract Schedule D — Capital Gains & Losses."""
+    data.sched_d_present = _form_present(
+        text,
+        r"SCHEDULE\s+D\b",
+        r"Capital\s+Gains\s+and\s+Losses",
+    )
+    if not data.sched_d_present:
+        return
+    window = _window_after(
+        text,
+        r"SCHEDULE\s+D\b|Capital\s+Gains\s+and\s+Losses",
+        window=4000,
+    )
+    if not window:
+        window = text
+    data.sched_d_net_stcg = _line(r"7\s+Net\s+short.?term\s+capital\s+gain", window)
+    data.sched_d_net_ltcg = _line(r"15\s+Net\s+long.?term\s+capital\s+gain", window)
+    # Capital loss carryforward
+    clc_m = re.search(
+        r"(?:capital\s+loss\s+carryover|carryover\s+from.*prior\s+year)[^\n]{0,200}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if clc_m:
+        data.sched_d_capital_loss_carryforward = parse_amount_token(clc_m.group(1).rstrip("."))
+
+
+def _extract_schedule_e(text: str, data: PriorYearReturnData) -> None:
+    """Extract Schedule E — Rental & Pass-Through Activity."""
+    data.sched_e_present = _form_present(
+        text,
+        r"SCHEDULE\s+E\b",
+        r"Supplemental\s+Income\s+and\s+Loss",
+    )
+    if not data.sched_e_present:
+        return
+    window = _window_after(
+        text,
+        r"SCHEDULE\s+E\b|Supplemental\s+Income\s+and\s+Loss",
+        window=5000,
+    )
+    if not window:
+        window = text
+    # Rental property addresses (look for street address patterns in header area)
+    addr_section = window[:1500]
+    for addr_m in re.finditer(
+        r"\d+\s+[A-Za-z][A-Za-z0-9\s\.\,\-]{5,50}(?:St|Ave|Rd|Blvd|Dr|Ln|Way|Ct|Pl|Hwy|Pkwy)\.?",
+        addr_section,
+    ):
+        addr = addr_m.group(0).strip()
+        if addr not in data.sched_e_rental_properties:
+            data.sched_e_rental_properties.append(addr)
+    # Income/loss totals
+    data.sched_e_total_rental_income = _line(r"(?:23a|24)\s+Total\s+rents?\s+received", window)
+    data.sched_e_total_rental_loss = _line(r"(?:23b|26)\s+Total\s+(?:rental\s+)?losses?", window)
+    # K-1 indicators
+    data.sched_e_k1_partnerships = bool(re.search(r"Partnership", window, re.IGNORECASE))
+    data.sched_e_k1_s_corps = bool(re.search(r"S\s+corporation", window, re.IGNORECASE))
+    data.sched_e_k1_trusts = bool(re.search(r"Trust|Estate", window, re.IGNORECASE))
+
+
+def _extract_form_4562(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 4562 — Depreciation & Section 179."""
+    data.form_4562_present = _form_present(
+        text,
+        r"Form\s+4562\b",
+        r"Depreciation\s+and\s+Amortization",
+    )
+    if not data.form_4562_present:
+        return
+    window = _window_after(text, r"Form\s+4562\b|Depreciation\s+and\s+Amortization", window=4000)
+    if not window:
+        window = text
+    s179_m = re.search(
+        r"12\s+.*Section\s+179[^\n]{0,200}?\.\s+12\s+([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if s179_m:
+        data.form_4562_section_179_deduction = parse_amount_token(s179_m.group(1).rstrip("."))
+    else:
+        data.form_4562_section_179_deduction = _line(r"12\s+.*Section\s+179", window)
+    cf_m = re.search(
+        r"13\s+Carryover\s+of\s+disallowed[^\n]{0,200}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if cf_m:
+        data.form_4562_section_179_carryforward = parse_amount_token(cf_m.group(1).rstrip("."))
+    bonus_m = re.search(
+        r"(?:special|bonus)\s+depreciation[^\n]{0,100}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if bonus_m:
+        data.form_4562_bonus_depreciation = parse_amount_token(bonus_m.group(1).rstrip("."))
+
+
+def _extract_form_8582(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 8582 — Passive Activity Loss Limitations."""
+    data.form_8582_present = _form_present(
+        text,
+        r"Form\s+8582\b",
+        r"Passive\s+Activity\s+Loss\s+Limitations",
+    )
+    if not data.form_8582_present:
+        return
+    window = _window_after(
+        text,
+        r"Form\s+8582\b|Passive\s+Activity\s+Loss\s+Limitations",
+        window=4000,
+    )
+    if not window:
+        window = text
+    pal_m = re.search(
+        r"(?:unallowed\s+loss|carryforward)[^\n]{0,100}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if pal_m:
+        data.form_8582_pal_carryforward = parse_amount_token(pal_m.group(1).rstrip("."))
+    rental_m = re.search(
+        r"(?:rental\s+)?(?:real\s+estate\s+)?loss\s+carryforward[^\n]{0,100}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if rental_m:
+        data.form_8582_rental_loss_carryforward = parse_amount_token(rental_m.group(1).rstrip("."))
+
+
+def _extract_form_8606(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 8606 — Nondeductible IRAs."""
+    data.form_8606_present = _form_present(
+        text,
+        r"Form\s+8606\b",
+        r"Nondeductible\s+IRAs",
+    )
+    if not data.form_8606_present:
+        return
+    window = _window_after(text, r"Form\s+8606\b|Nondeductible\s+IRAs", window=4000)
+    if not window:
+        window = text
+    basis_m = re.search(
+        r"14\s+(?:Add\s+lines|Your\s+basis)[^\n]{0,200}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if basis_m:
+        data.form_8606_ira_basis = parse_amount_token(basis_m.group(1).rstrip("."))
+    nd_m = re.search(
+        r"1\s+(?:Enter\s+your\s+)?nondeductible[^\n]{0,200}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if nd_m:
+        data.form_8606_nondeductible_contributions = parse_amount_token(nd_m.group(1).rstrip("."))
+
+
+def _extract_form_8829(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 8829 — Home Office."""
+    data.form_8829_present = _form_present(
+        text,
+        r"Form\s+8829\b",
+        r"Expenses\s+for\s+Business\s+Use\s+of\s+Your\s+Home",
+    )
+    if not data.form_8829_present:
+        return
+    window = _window_after(
+        text,
+        r"Form\s+8829\b|Expenses\s+for\s+Business\s+Use\s+of\s+Your\s+Home",
+        window=4000,
+    )
+    if not window:
+        window = text
+    cf_m = re.search(
+        r"43\s+Carryover[^\n]{0,200}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if cf_m:
+        data.form_8829_carryforward = parse_amount_token(cf_m.group(1).rstrip("."))
+
+
+def _extract_form_8995(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 8995 / 8995-A — Qualified Business Income Deduction."""
+    data.form_8995_present = _form_present(
+        text,
+        r"Form\s+8995\b",
+        r"Qualified\s+Business\s+Income\s+Deduction",
+    )
+    if not data.form_8995_present:
+        return
+    window = _window_after(
+        text,
+        r"Form\s+8995\b|Qualified\s+Business\s+Income\s+Deduction",
+        window=4000,
+    )
+    if not window:
+        window = text
+    cf_m = re.search(
+        r"(?:QBI\s+)?(?:loss\s+carryforward|carryover)[^\n]{0,100}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if cf_m:
+        data.form_8995_qbi_loss_carryforward = parse_amount_token(cf_m.group(1).rstrip("."))
+
+
+def _extract_form_1116(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 1116 — Foreign Tax Credit."""
+    data.form_1116_present = _form_present(
+        text,
+        r"Form\s+1116\b",
+        r"Foreign\s+Tax\s+Credit",
+    )
+    if not data.form_1116_present:
+        return
+    window = _window_after(text, r"Form\s+1116\b|Foreign\s+Tax\s+Credit", window=4000)
+    if not window:
+        window = text
+    data.form_1116_foreign_tax_credit = _line(r"35\s+Enter\s+the\s+smaller", window)
+    cf_m = re.search(
+        r"carryover\s+to[^\n]{0,100}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if cf_m:
+        data.form_1116_carryforward = parse_amount_token(cf_m.group(1).rstrip("."))
+
+
+def _extract_form_3800(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 3800 — General Business Credit."""
+    data.form_3800_present = _form_present(
+        text,
+        r"Form\s+3800\b",
+        r"General\s+Business\s+Credit",
+    )
+    if not data.form_3800_present:
+        return
+    window = _window_after(text, r"Form\s+3800\b|General\s+Business\s+Credit", window=4000)
+    if not window:
+        window = text
+    cf_m = re.search(
+        r"carryforward\s+to[^\n]{0,100}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if cf_m:
+        data.form_3800_credit_carryforward = parse_amount_token(cf_m.group(1).rstrip("."))
+
+
+def _extract_form_6251(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 6251 — Alternative Minimum Tax."""
+    data.form_6251_present = _form_present(
+        text,
+        r"Form\s+6251\b",
+        r"Alternative\s+Minimum\s+Tax",
+    )
+    if not data.form_6251_present:
+        return
+    window = _window_after(
+        text,
+        r"Form\s+6251\b|Alternative\s+Minimum\s+Tax",
+        window=4000,
+    )
+    if not window:
+        window = text
+    data.form_6251_amt = _line(r"(?:11|19)\s+Alternative\s+minimum\s+tax", window)
+    cf_m = re.search(
+        r"(?:AMT\s+credit|minimum\s+tax\s+credit)\s+carryforward[^\n]{0,100}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if cf_m:
+        data.form_6251_amt_credit_carryforward = parse_amount_token(cf_m.group(1).rstrip("."))
+
+
+def _extract_form_6252(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 6252 — Installment Sale Income."""
+    data.form_6252_present = _form_present(
+        text,
+        r"Form\s+6252\b",
+        r"Installment\s+Sale\s+Income",
+    )
+    if not data.form_6252_present:
+        return
+    window = _window_after(text, r"Form\s+6252\b|Installment\s+Sale\s+Income", window=4000)
+    if not window:
+        window = text
+    gp_m = re.search(
+        r"19\s+Gross\s+profit\s+percentage[^\n]{0,100}([\d.]+)\s*%",
+        window, re.IGNORECASE,
+    )
+    if gp_m:
+        try:
+            data.form_6252_gross_profit_pct = float(gp_m.group(1))
+        except ValueError:
+            pass
+
+
+def _extract_form_8283(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 8283 — Noncash Charitable Contributions."""
+    data.form_8283_present = _form_present(
+        text,
+        r"Form\s+8283\b",
+        r"Noncash\s+Charitable\s+Contributions",
+    )
+
+
+def _extract_form_8889(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 8889 — Health Savings Accounts."""
+    data.form_8889_present = _form_present(
+        text,
+        r"Form\s+8889\b",
+        r"Health\s+Savings\s+Accounts",
+    )
+    if not data.form_8889_present:
+        return
+    window = _window_after(text, r"Form\s+8889\b|Health\s+Savings\s+Accounts", window=4000)
+    if not window:
+        window = text
+    data.form_8889_hsa_contributions = _line(r"2\s+HSA\s+contributions", window)
+    data.form_8889_excess_contributions = _line(r"18\s+Excess", window)
+
+
+def _extract_form_7203(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 7203 — S-Corp Shareholder Stock and Debt Basis."""
+    data.form_7203_present = _form_present(
+        text,
+        r"Form\s+7203\b",
+        r"S\s+Corporation\s+Shareholder\s+Stock\s+and\s+Debt\s+Basis",
+    )
+    if not data.form_7203_present:
+        return
+    window = _window_after(
+        text,
+        r"Form\s+7203\b|S\s+Corporation\s+Shareholder\s+Stock\s+and\s+Debt\s+Basis",
+        window=4000,
+    )
+    if not window:
+        window = text
+    # Stock basis: first amount near beginning
+    stock_m = re.search(r"(?:stock\s+basis|basis\s+in\s+stock)[^\n]{0,200}([\d,]+\.(?:\d{2})?)", window, re.IGNORECASE)
+    if stock_m:
+        data.form_7203_stock_basis = parse_amount_token(stock_m.group(1).rstrip("."))
+    # Debt basis
+    debt_m = re.search(r"(?:debt\s+basis|basis\s+in\s+debt)[^\n]{0,200}([\d,]+\.(?:\d{2})?)", window, re.IGNORECASE)
+    if debt_m:
+        data.form_7203_debt_basis = parse_amount_token(debt_m.group(1).rstrip("."))
+
+
+def _extract_form_6198(text: str, data: PriorYearReturnData) -> None:
+    """Extract Form 6198 — At-Risk Limitations."""
+    data.form_6198_present = _form_present(
+        text,
+        r"Form\s+6198\b",
+        r"At-Risk\s+Limitations",
+    )
+    if not data.form_6198_present:
+        return
+    window = _window_after(text, r"Form\s+6198\b|At-Risk\s+Limitations", window=4000)
+    if not window:
+        window = text
+    cf_m = re.search(
+        r"(?:at.risk\s+)?loss\s+carryforward[^\n]{0,100}([\d,]+\.(?:\d{2})?)",
+        window, re.IGNORECASE,
+    )
+    if cf_m:
+        data.form_6198_at_risk_carryforward = parse_amount_token(cf_m.group(1).rstrip("."))
+
+
+def _extract_state_returns(text: str, data: PriorYearReturnData) -> None:
+    """Detect state return filings from the PDF text."""
+    state_pattern = re.compile(
+        r"\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IA|ID|IL|IN|KS|KY|LA|MA|MD|ME|MI|MN|MO|MS|MT|"
+        r"NC|ND|NE|NH|NJ|NM|NV|NY|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VA|VT|WA|WI|WV|WY)\b"
+        r"[^\n]{0,60}(?:Department\s+of\s+Revenue|Tax\s+Commission|State\s+Income\s+Tax|"
+        r"Resident\s+Return|Nonresident\s+Return|Individual\s+Income\s+Tax)",
+        re.IGNORECASE,
+    )
+    found = set()
+    for m in state_pattern.finditer(text):
+        found.add(m.group(1).upper())
+    # Also reverse pattern: "State Income Tax Return" with state code nearby
+    for m in re.finditer(
+        r"(?:Individual\s+Income\s+Tax|Resident\s+Return|Nonresident\s+Return)[^\n]{0,80}"
+        r"\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IA|ID|IL|IN|KS|KY|LA|MA|MD|ME|MI|MN|MO|MS|MT|"
+        r"NC|ND|NE|NH|NJ|NM|NV|NY|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VA|VT|WA|WI|WV|WY)\b",
+        text, re.IGNORECASE,
+    ):
+        found.add(m.group(1).upper())
+    data.state_returns_filed = sorted(found)
+
+
+def _detect_elections(text: str, data: PriorYearReturnData) -> None:
+    """Detect tax elections and continuity indicators."""
+    data.election_real_estate_professional = _form_present(
+        text,
+        r"real\s+estate\s+professional",
+        r"Real\s+Estate\s+Professional",
+    )
+    data.election_installment_sale = data.form_6252_present
+
+
 def _extract_income_lines(text: str, data: PriorYearReturnData) -> None:
     """Extract Form 1040 page 1 income lines 1a through 15."""
 
@@ -549,11 +1143,86 @@ def parse_prior_year_return_text(
         data.zip_code,
     ) = _extract_address(text)
 
+    # --- Occupations ---
+    _extract_occupations(text, data)
+
+    # --- Dependents ---
+    _extract_dependents(text, data)
+
+    # --- Extension indicator ---
+    _extract_extension(text, data)
+
     # --- Income lines (page 1) ---
     _extract_income_lines(text, data)
 
     # --- Tax & payment lines (page 2) ---
     _extract_tax_and_payment_lines(text, data)
+
+    # --- Refund applied forward (line 36) ---
+    _extract_refund_applied_forward(text, data)
+
+    # --- Schedule 1 adjustments ---
+    _extract_schedule_1_adjustments(text, data)
+
+    # --- Schedule A ---
+    _extract_schedule_a(text, data)
+
+    # --- Schedule B ---
+    _extract_schedule_b(text, data)
+
+    # --- Schedule C ---
+    _extract_schedule_c(text, data)
+
+    # --- Schedule D ---
+    _extract_schedule_d(text, data)
+
+    # --- Schedule E ---
+    _extract_schedule_e(text, data)
+
+    # --- Form 4562 ---
+    _extract_form_4562(text, data)
+
+    # --- Form 8582 ---
+    _extract_form_8582(text, data)
+
+    # --- Form 8606 ---
+    _extract_form_8606(text, data)
+
+    # --- Form 8829 ---
+    _extract_form_8829(text, data)
+
+    # --- Form 8995 ---
+    _extract_form_8995(text, data)
+
+    # --- Form 1116 ---
+    _extract_form_1116(text, data)
+
+    # --- Form 3800 ---
+    _extract_form_3800(text, data)
+
+    # --- Form 6251 ---
+    _extract_form_6251(text, data)
+
+    # --- Form 6252 ---
+    _extract_form_6252(text, data)
+
+    # --- Form 8283 ---
+    _extract_form_8283(text, data)
+
+    # --- Form 8889 ---
+    _extract_form_8889(text, data)
+
+    # --- Form 7203 ---
+    _extract_form_7203(text, data)
+
+    # --- Form 6198 ---
+    _extract_form_6198(text, data)
+
+    # --- State returns ---
+    _extract_state_returns(text, data)
+
+    # --- Elections ---
+    _detect_elections(text, data)
 
     # --- Confidence ---
     data.confidence = _score_confidence(data)

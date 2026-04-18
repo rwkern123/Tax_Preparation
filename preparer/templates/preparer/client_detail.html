@@ -825,6 +825,250 @@
               </div>
             </div>
 
+            {# Occupations #}
+            {% if py.get('taxpayer_occupation') or py.get('spouse_occupation') %}
+            <div class="row g-2 mb-2">
+              {% if py.get('taxpayer_occupation') %}
+              <div class="col-auto"><span class="small text-muted">Taxpayer Occupation:</span> <span class="small">{{ py.get('taxpayer_occupation') }}</span></div>
+              {% endif %}
+              {% if py.get('spouse_occupation') %}
+              <div class="col-auto"><span class="small text-muted">Spouse Occupation:</span> <span class="small">{{ py.get('spouse_occupation') }}</span></div>
+              {% endif %}
+            </div>
+            {% endif %}
+
+            {# Dependents #}
+            {% if py.get('dependents') %}
+            <div class="card border-0 bg-light mt-2">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Dependents</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <thead class="table-light">
+                    <tr><th>Name</th><th>SSN</th><th>Relationship</th><th class="text-center">CTC</th><th class="text-center">ODC</th></tr>
+                  </thead>
+                  <tbody>
+                    {% for dep in py.get('dependents', []) %}
+                    <tr>
+                      <td>{{ dep.get('name') or '--' }}</td>
+                      <td>{{ dep.get('ssn') or '--' }}</td>
+                      <td>{{ dep.get('relationship') or '--' }}</td>
+                      <td class="text-center">{% if dep.get('ctc_eligible') %}<span class="text-success">&#10003;</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                      <td class="text-center">{% if dep.get('odc_eligible') %}<span class="text-success">&#10003;</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Schedule 1 Adjustments #}
+            {% set s1_fields = [
+              ('Educator Expenses', py.get('sched1_educator_expenses')),
+              ('HSA Deduction', py.get('sched1_hsa_deduction')),
+              ('IRA Deduction', py.get('sched1_ira_deduction')),
+              ('Student Loan Interest', py.get('sched1_student_loan_interest')),
+              ('Net Operating Loss', py.get('sched1_nol_deduction')),
+            ] %}
+            {% set s1_any = s1_fields | selectattr('1') | list %}
+            {% if s1_any %}
+            <div class="card border-0 bg-light mt-2">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Schedule 1 — Adjustments</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <tbody>
+                    {% for label, val in s1_fields %}{% if val is not none %}
+                    <tr><td>{{ label }}</td><td class="text-end amount">{{ val | fmt_amount }}</td></tr>
+                    {% endif %}{% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Schedule A #}
+            {% if py.get('sched_a_present') %}
+            <div class="card border-0 bg-light mt-2">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Schedule A — Itemized Deductions</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <tbody>
+                    {% if py.get('sched_a_medical_dental') is not none %}<tr><td>Medical &amp; Dental (Line 4)</td><td class="text-end amount">{{ py.get('sched_a_medical_dental') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_a_salt_total') is not none %}<tr><td>SALT Total (Line 5e/5f)</td><td class="text-end amount">{{ py.get('sched_a_salt_total') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_a_mortgage_interest') is not none %}<tr><td>Mortgage Interest (Line 8a)</td><td class="text-end amount">{{ py.get('sched_a_mortgage_interest') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_a_investment_interest') is not none %}<tr><td>Investment Interest (Line 9)</td><td class="text-end amount">{{ py.get('sched_a_investment_interest') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_a_charitable_cash') is not none %}<tr><td>Charitable — Cash (Line 11)</td><td class="text-end amount">{{ py.get('sched_a_charitable_cash') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_a_charitable_noncash') is not none %}<tr><td>Charitable — Noncash (Line 12)</td><td class="text-end amount">{{ py.get('sched_a_charitable_noncash') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_a_charitable_carryforward') is not none %}<tr><td>Charitable Carryforward (Line 13)</td><td class="text-end amount">{{ py.get('sched_a_charitable_carryforward') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_a_total_itemized') is not none %}<tr class="table-primary fw-semibold"><td>Total Itemized Deductions (Line 17)</td><td class="text-end amount">{{ py.get('sched_a_total_itemized') | fmt_amount }}</td></tr>{% endif %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Schedule B #}
+            {% if py.get('sched_b_present') %}
+            <div class="card border-0 bg-light mt-2">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Schedule B — Interest &amp; Dividends</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <tbody>
+                    <tr>
+                      <td>Foreign Financial Account (Part III Q7a)</td>
+                      <td>
+                        {% if py.get('sched_b_foreign_account') == true %}<span class="badge bg-warning text-dark">Yes</span>
+                        {% elif py.get('sched_b_foreign_account') == false %}<span class="badge bg-success">No</span>
+                        {% else %}<span class="text-muted">Unknown</span>{% endif %}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Schedule C #}
+            {% if py.get('sched_c_present') and py.get('sched_c_businesses') %}
+            <div class="card border-0 bg-light mt-2">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Schedule C — Business Activity</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <thead class="table-light">
+                    <tr><th>Business Name</th><th>EIN</th><th>Method</th><th class="text-end">Net P&amp;L</th></tr>
+                  </thead>
+                  <tbody>
+                    {% for biz in py.get('sched_c_businesses', []) %}
+                    <tr>
+                      <td>{{ biz.get('name') or '--' }}</td>
+                      <td>{{ biz.get('ein') or '--' }}</td>
+                      <td>{{ biz.get('accounting_method') or '--' }}</td>
+                      <td class="text-end amount">{{ biz.get('net_profit_loss') | fmt_amount }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Schedule D #}
+            {% if py.get('sched_d_present') %}
+            <div class="card border-0 bg-light mt-2">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Schedule D — Capital Gains &amp; Losses</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <tbody>
+                    {% if py.get('sched_d_net_stcg') is not none %}<tr><td>Net Short-Term Capital Gain (Line 7)</td><td class="text-end amount">{{ py.get('sched_d_net_stcg') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_d_net_ltcg') is not none %}<tr><td>Net Long-Term Capital Gain (Line 15)</td><td class="text-end amount">{{ py.get('sched_d_net_ltcg') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_d_capital_loss_carryforward') is not none %}<tr><td>Capital Loss Carryforward</td><td class="text-end amount">{{ py.get('sched_d_capital_loss_carryforward') | fmt_amount }}</td></tr>{% endif %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Schedule E #}
+            {% if py.get('sched_e_present') %}
+            <div class="card border-0 bg-light mt-2">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Schedule E — Rental &amp; Pass-Through</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <tbody>
+                    {% if py.get('sched_e_rental_properties') %}
+                    <tr><td>Rental Properties</td><td>{{ py.get('sched_e_rental_properties') | join(', ') }}</td></tr>
+                    {% endif %}
+                    {% if py.get('sched_e_total_rental_income') is not none %}<tr><td>Total Rental Income</td><td class="text-end amount">{{ py.get('sched_e_total_rental_income') | fmt_amount }}</td></tr>{% endif %}
+                    {% if py.get('sched_e_total_rental_loss') is not none %}<tr><td>Total Rental Loss</td><td class="text-end amount">{{ py.get('sched_e_total_rental_loss') | fmt_amount }}</td></tr>{% endif %}
+                    <tr>
+                      <td>K-1 Activities</td>
+                      <td>
+                        {% if py.get('sched_e_k1_partnerships') %}<span class="badge bg-secondary me-1">Partnership</span>{% endif %}
+                        {% if py.get('sched_e_k1_s_corps') %}<span class="badge bg-secondary me-1">S-Corp</span>{% endif %}
+                        {% if py.get('sched_e_k1_trusts') %}<span class="badge bg-secondary me-1">Trust/Estate</span>{% endif %}
+                        {% if not py.get('sched_e_k1_partnerships') and not py.get('sched_e_k1_s_corps') and not py.get('sched_e_k1_trusts') %}<span class="text-muted">None detected</span>{% endif %}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Carryforward Summary #}
+            {% set cf_rows = [
+              ('Section 179 Carryforward (Form 4562)', py.get('form_4562_section_179_carryforward')),
+              ('Passive Activity Loss Carryforward (Form 8582)', py.get('form_8582_pal_carryforward')),
+              ('Rental Loss Carryforward (Form 8582)', py.get('form_8582_rental_loss_carryforward')),
+              ('IRA Basis (Form 8606)', py.get('form_8606_ira_basis')),
+              ('Home Office Carryforward (Form 8829)', py.get('form_8829_carryforward')),
+              ('QBI Loss Carryforward (Form 8995)', py.get('form_8995_qbi_loss_carryforward')),
+              ('Foreign Tax Credit Carryforward (Form 1116)', py.get('form_1116_carryforward')),
+              ('General Business Credit Carryforward (Form 3800)', py.get('form_3800_credit_carryforward')),
+              ('AMT Credit Carryforward (Form 6251)', py.get('form_6251_amt_credit_carryforward')),
+              ('At-Risk Loss Carryforward (Form 6198)', py.get('form_6198_at_risk_carryforward')),
+              ('Charitable Deduction Carryforward (Schedule A)', py.get('sched_a_charitable_carryforward')),
+              ('Capital Loss Carryforward (Schedule D)', py.get('sched_d_capital_loss_carryforward')),
+            ] %}
+            {% set cf_any = cf_rows | selectattr('1') | list %}
+            {% if cf_any %}
+            <div class="card border-0 bg-light mt-2">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Carryforward Summary</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <tbody>
+                    {% for label, val in cf_rows %}{% if val is not none %}
+                    <tr><td>{{ label }}</td><td class="text-end amount">{{ val | fmt_amount }}</td></tr>
+                    {% endif %}{% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Form Presence Indicators #}
+            {% set form_badges = [
+              ('Sch A', py.get('sched_a_present')),
+              ('Sch B', py.get('sched_b_present')),
+              ('Sch C', py.get('sched_c_present')),
+              ('Sch D', py.get('sched_d_present')),
+              ('Sch E', py.get('sched_e_present')),
+              ('4562', py.get('form_4562_present')),
+              ('8582', py.get('form_8582_present')),
+              ('8606', py.get('form_8606_present')),
+              ('8829', py.get('form_8829_present')),
+              ('8995', py.get('form_8995_present')),
+              ('1116', py.get('form_1116_present')),
+              ('3800', py.get('form_3800_present')),
+              ('6251', py.get('form_6251_present')),
+              ('6252', py.get('form_6252_present')),
+              ('8283', py.get('form_8283_present')),
+              ('8889', py.get('form_8889_present')),
+              ('7203', py.get('form_7203_present')),
+              ('6198', py.get('form_6198_present')),
+            ] %}
+            {% set visible_badges = form_badges | selectattr('1') | list %}
+            {% if visible_badges or py.get('extension_filed') %}
+            <div class="mt-2 mb-1">
+              <span class="small text-muted me-1">Forms filed:</span>
+              {% for label, present in form_badges %}{% if present %}
+              <span class="badge bg-primary me-1">{{ label }}</span>
+              {% endif %}{% endfor %}
+              {% if py.get('extension_filed') %}<span class="badge bg-warning text-dark me-1">Extension Filed</span>{% endif %}
+            </div>
+            {% endif %}
+
+            {# Occupations / Elections / States #}
+            {% if py.get('election_real_estate_professional') or py.get('election_installment_sale') or py.get('state_returns_filed') %}
+            <div class="mt-2 small">
+              {% if py.get('election_real_estate_professional') %}<span class="badge bg-info text-dark me-1">Real Estate Professional</span>{% endif %}
+              {% if py.get('election_installment_sale') %}<span class="badge bg-info text-dark me-1">Installment Sale</span>{% endif %}
+              {% for st in py.get('state_returns_filed', []) %}
+              <span class="badge bg-secondary me-1">{{ st }} Return</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+
           </div>
         </div>
         {% endfor %}

@@ -54,6 +54,10 @@ def parse_uploaded_file(file_path: str, use_ocr: bool = False, category_hint: st
         elif doc_type == "form_1098":
             data = parse_1098_text(text)
             extracted = {"form_1098": [asdict(data)]}
+        elif doc_type == "prior_year_return":
+            from src.extract.prior_year_return import parse_prior_year_return_text
+            data = parse_prior_year_return_text(text)
+            extracted = {"prior_year_return": [asdict(data)]}
 
         drake = _to_drake_fields(doc_type, extracted)
         flags = _generate_flags(doc_type, confidence, extracted)

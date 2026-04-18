@@ -236,6 +236,7 @@
     {% set w2_docs      = parsed_docs | selectattr('doc_type', 'equalto', 'w2') | list %}
     {% set b1099_docs   = parsed_docs | selectattr('doc_type', 'equalto', 'brokerage_1099') | list %}
     {% set f1098_docs   = parsed_docs | selectattr('doc_type', 'equalto', 'form_1098') | list %}
+    {% set py_docs      = parsed_docs | selectattr('doc_type', 'equalto', 'prior_year_return') | list %}
     {% set unknown_docs = parsed_docs | selectattr('doc_type', 'equalto', 'unknown') | list %}
 
     {# W2: taxpayer vs spouse split #}
@@ -286,6 +287,12 @@
       {% if f1098_docs %}
       <li class="nav-item">
         <button class="nav-link {% if pill_ns.first %}active{% endif %}" data-panel="panel-1098">Form 1098</button>
+      </li>
+      {% set pill_ns.first = false %}
+      {% endif %}
+      {% if py_docs %}
+      <li class="nav-item">
+        <button class="nav-link {% if pill_ns.first %}active{% endif %}" data-panel="panel-prior-year">Prior Year Return</button>
       </li>
       {% set pill_ns.first = false %}
       {% endif %}
@@ -715,6 +722,113 @@
         </div>
         {% endfor %}
       </div>{# /panel-1098 #}
+      {% endif %}
+
+      {# ════ Prior Year Return Panel ════ #}
+      {% if py_docs %}
+      <div id="panel-prior-year" class="extracted-panel d-none">
+        {% for pd in py_docs %}
+        {% set py = pd.extracted_json.get('prior_year_return', [{}])[0] if pd.extracted_json.get('prior_year_return') else {} %}
+        <div class="card shadow-sm mb-3">
+          <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2"
+               style="background-color:#f0f4ff; border-left:4px solid #6366f1;">
+            {% if pd.file_path %}
+            <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
+               target="_blank" class="fw-semibold text-decoration-none small">
+              {{ pd.original_name }} &#8599;
+            </a>
+            {% else %}
+            <span class="fw-semibold small">{{ pd.original_name }}</span>
+            {% endif %}
+            {% if py.get('year') %}<span class="badge bg-secondary ms-1">TY {{ py.get('year') }}</span>{% endif %}
+            {% if py.get('filing_status') %}<span class="badge bg-light text-dark border ms-1">{{ py.get('filing_status') }}</span>{% endif %}
+            <span class="ms-auto d-flex align-items-center gap-2">
+              <span class="small text-muted">Confidence:</span>
+              <div class="conf-bar-wrap" style="width:80px">
+                <div class="conf-bar" style="width:{{ (pd.confidence * 100) | int }}%"
+                     data-conf="{{ pd.confidence }}"></div>
+                <span class="conf-label">{{ (pd.confidence * 100) | int }}%</span>
+              </div>
+            </span>
+          </div>
+          <div class="card-body py-2">
+
+            {# Identity #}
+            <div class="row g-2 mb-3">
+              <div class="col-md-6">
+                <table class="table table-sm field-table mb-0">
+                  <thead class="table-light"><tr><th colspan="2" class="small">Taxpayer</th></tr></thead>
+                  <tbody>
+                    <tr><td>Name</td><td>{{ py.get('taxpayer_name') or '--' }}</td></tr>
+                    <tr><td>SSN</td><td>{{ py.get('taxpayer_ssn') or '--' }}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              {% if py.get('spouse_name') or py.get('spouse_ssn') %}
+              <div class="col-md-6">
+                <table class="table table-sm field-table mb-0">
+                  <thead class="table-light"><tr><th colspan="2" class="small">Spouse</th></tr></thead>
+                  <tbody>
+                    <tr><td>Name</td><td>{{ py.get('spouse_name') or '--' }}</td></tr>
+                    <tr><td>SSN</td><td>{{ py.get('spouse_ssn') or '--' }}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              {% endif %}
+            </div>
+
+            {# Income lines #}
+            <div class="card mb-2 border-0 bg-light">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Income (Page 1)</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <tbody>
+                    <tr><td>1a — W-2 Wages</td><td class="text-end amount">{{ py.get('line_1a_w2_wages') | fmt_amount }}</td></tr>
+                    <tr><td>1z — Total Wages</td><td class="text-end amount">{{ py.get('line_1z_total_wages') | fmt_amount }}</td></tr>
+                    <tr><td>2b — Taxable Interest</td><td class="text-end amount">{{ py.get('line_2b_taxable_interest') | fmt_amount }}</td></tr>
+                    <tr><td>3a — Qualified Dividends</td><td class="text-end amount">{{ py.get('line_3a_qualified_dividends') | fmt_amount }}</td></tr>
+                    <tr><td>3b — Ordinary Dividends</td><td class="text-end amount">{{ py.get('line_3b_ordinary_dividends') | fmt_amount }}</td></tr>
+                    <tr><td>4b — Taxable IRA Distributions</td><td class="text-end amount">{{ py.get('line_4b_ira_taxable') | fmt_amount }}</td></tr>
+                    <tr><td>5b — Taxable Pensions/Annuities</td><td class="text-end amount">{{ py.get('line_5b_pension_taxable') | fmt_amount }}</td></tr>
+                    <tr><td>6b — Taxable Social Security</td><td class="text-end amount">{{ py.get('line_6b_ss_taxable') | fmt_amount }}</td></tr>
+                    <tr><td>7 — Capital Gain / (Loss)</td><td class="text-end amount">{{ py.get('line_7_capital_gain_loss') | fmt_amount }}</td></tr>
+                    <tr><td>8 — Other Income (Sch. 1)</td><td class="text-end amount">{{ py.get('line_8_other_income') | fmt_amount }}</td></tr>
+                    <tr><td>9 — Total Income</td><td class="text-end amount fw-semibold">{{ py.get('line_9_total_income') | fmt_amount }}</td></tr>
+                    <tr><td>10 — Adjustments</td><td class="text-end amount">{{ py.get('line_10_adjustments') | fmt_amount }}</td></tr>
+                    <tr class="table-primary"><td>11 — Adjusted Gross Income</td><td class="text-end amount fw-bold">{{ py.get('line_11_agi') | fmt_amount }}</td></tr>
+                    <tr><td>12 — Standard / Itemized Deductions</td><td class="text-end amount">{{ py.get('line_12_deductions') | fmt_amount }}</td></tr>
+                    <tr><td>13 — QBI Deduction</td><td class="text-end amount">{{ py.get('line_13_qbi_deduction') | fmt_amount }}</td></tr>
+                    <tr class="table-primary"><td>15 — Taxable Income</td><td class="text-end amount fw-bold">{{ py.get('line_15_taxable_income') | fmt_amount }}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {# Tax & payments #}
+            <div class="card border-0 bg-light">
+              <div class="card-header py-1 small fw-semibold bg-transparent border-bottom">Tax &amp; Payments (Page 2)</div>
+              <div class="table-responsive">
+                <table class="table table-sm field-table mb-0">
+                  <tbody>
+                    <tr><td>16 — Income Tax</td><td class="text-end amount">{{ py.get('line_16_tax') | fmt_amount }}</td></tr>
+                    <tr class="table-warning"><td>24 — Total Tax</td><td class="text-end amount fw-bold">{{ py.get('line_24_total_tax') | fmt_amount }}</td></tr>
+                    <tr><td>25a — W-2 Withholding</td><td class="text-end amount">{{ py.get('line_25a_w2_withholding') | fmt_amount }}</td></tr>
+                    <tr><td>25b — 1099 Withholding</td><td class="text-end amount">{{ py.get('line_25b_1099_withholding') | fmt_amount }}</td></tr>
+                    <tr><td>25d — Total Withholding</td><td class="text-end amount">{{ py.get('line_25d_total_withholding') | fmt_amount }}</td></tr>
+                    <tr><td>26 — Estimated Tax Payments</td><td class="text-end amount">{{ py.get('line_26_estimated_payments') | fmt_amount }}</td></tr>
+                    <tr><td>33 — Total Payments</td><td class="text-end amount fw-semibold">{{ py.get('line_33_total_payments') | fmt_amount }}</td></tr>
+                    <tr><td>35a — Refund</td><td class="text-end amount text-success fw-semibold">{{ py.get('line_35a_refund') | fmt_amount }}</td></tr>
+                    <tr><td>37 — Amount Owed</td><td class="text-end amount text-danger fw-semibold">{{ py.get('line_37_amount_owed') | fmt_amount }}</td></tr>
+                    <tr><td>38 — Estimated Tax Penalty</td><td class="text-end amount">{{ py.get('line_38_estimated_tax_penalty') | fmt_amount }}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+        {% endfor %}
+      </div>{# /panel-prior-year #}
       {% endif %}
 
       {# ════ Other Panel ════ #}

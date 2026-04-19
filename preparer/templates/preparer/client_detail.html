@@ -91,132 +91,77 @@
         <table class="table align-middle mb-0">
           <thead class="table-light">
             <tr>
-              <th>Document</th>
-              <th class="text-center">Required</th>
-              <th class="text-center">Uploaded</th>
-              <th>Files</th>
-              <th class="text-center">Parse Status</th>
-              <th class="text-center">Confidence</th>
-              <th class="text-center">Flags</th>
-              <th></th>
+              <th style="min-width:160px">Document</th>
+              <th class="text-center" style="width:80px">Uploaded</th>
+              <th style="width:150px">Date &amp; Time</th>
+              <th>Filename</th>
+              <th style="width:80px"></th>
             </tr>
           </thead>
           <tbody>
             {% for doc in doc_status %}
             {% if doc.uploads %}
+              {# One row per uploaded file #}
               {% for upload in doc.uploads %}
               <tr>
                 {% if loop.first %}
-                <td rowspan="{{ doc.uploads | length }}" class="fw-semibold align-top pt-3">
-                  {{ doc.label }}{% if doc.required %}<span class="text-danger">*</span>{% endif %}
-                </td>
-                <td rowspan="{{ doc.uploads | length }}" class="text-center align-top pt-3">
-                  {% if doc.required %}<span class="text-danger fw-bold">Yes</span>{% else %}<span class="text-muted">No</span>{% endif %}
-                </td>
-                <td rowspan="{{ doc.uploads | length }}" class="text-center align-top pt-3">
-                  <span class="text-success">&#10003;</span>
+                <td rowspan="{{ doc.uploads | length + 1 }}" class="fw-semibold align-top pt-3">
+                  {{ doc.label }}
                 </td>
                 {% endif %}
-                <td class="small text-truncate" style="max-width:180px" title="{{ upload.original_name }}">
+                <td class="text-center">
+                  <span class="text-success fw-bold">&#10003;</span>
+                </td>
+                <td class="small text-nowrap text-muted">
+                  {{ upload.uploaded_at | fmt_datetime }}
+                </td>
+                <td class="small text-truncate" style="max-width:240px" title="{{ upload.original_name }}">
                   {{ upload.original_name }}
                 </td>
-                <td class="text-center">
-                  {% if upload.parsed %}
-                    <span class="badge bg-success">Parsed</span>
-                    {% if upload.doc_type %}
-                      <span class="badge bg-secondary ms-1">{{ upload.doc_type | replace('_', ' ') }}</span>
-                    {% endif %}
-                  {% elif upload.pending %}
-                    <span class="badge bg-info text-dark">Pending</span>
-                  {% elif upload.failed %}
-                    <span class="badge bg-danger" title="{{ upload.parse_error }}">Failed</span>
-                  {% else %}
-                    <span class="text-muted small">--</span>
-                  {% endif %}
-                </td>
-                <td class="text-center">
-                  {% if upload.confidence is not none %}
-                    <div class="conf-bar-wrap">
-                      <div class="conf-bar" style="width:{{ (upload.confidence * 100) | int }}%"
-                           data-conf="{{ upload.confidence }}"></div>
-                      <span class="conf-label">{{ (upload.confidence * 100) | int }}%</span>
-                    </div>
-                  {% else %}
-                    <span class="text-muted">--</span>
-                  {% endif %}
-                </td>
-                <td class="text-center">
-                  {% if upload.flag_count %}
-                    <span class="badge bg-warning text-dark">{{ upload.flag_count }}</span>
-                  {% else %}
-                    <span class="text-muted">--</span>
-                  {% endif %}
-                </td>
-                <td>
+                <td class="text-end">
                   {% if upload.upload_id %}
-                  <form method="post"
-                        action="{{ url_for('preparer.reparse', user_id=user.id, upload_id=upload.upload_id) }}"
-                        class="d-inline">
-                    <input type="hidden" name="year" value="{{ year }}">
-                    <button class="btn btn-xs btn-outline-secondary" title="Re-parse">&#8635;</button>
-                  </form>
-                  <form method="post"
-                        action="{{ url_for('preparer.reparse', user_id=user.id, upload_id=upload.upload_id) }}"
-                        class="d-inline ms-1">
-                    <input type="hidden" name="year" value="{{ year }}">
-                    <input type="hidden" name="ocr" value="1">
-                    <button class="btn btn-xs btn-outline-primary" title="Re-parse with OCR">OCR</button>
-                  </form>
-                  {% if azure_configured and upload.doc_type in ('w2', 'brokerage_1099') %}
-                  <form method="post"
-                        action="{{ url_for('preparer.azure_enhance', user_id=user.id, upload_id=upload.upload_id) }}"
-                        class="d-inline ms-1">
-                    <input type="hidden" name="year" value="{{ year }}">
-                    <button class="btn btn-xs btn-outline-success" title="Enhance with Azure Document Intelligence">
-                      &#9889; Azure
-                    </button>
-                  </form>
-                  {% endif %}
                   <button type="button"
-                          class="btn btn-xs btn-outline-danger ms-1 btn-delete-upload"
+                          class="btn btn-xs btn-outline-danger btn-delete-upload"
                           data-upload-id="{{ upload.upload_id }}"
                           data-filename="{{ upload.original_name }}"
                           data-url="{{ url_for('preparer.delete_upload', user_id=user.id, upload_id=upload.upload_id) }}"
-                          title="Delete this document">&#128465;</button>
+                          title="Delete">&#128465;</button>
                   {% endif %}
                 </td>
               </tr>
               {% endfor %}
-            <tr>
-              <td colspan="8" class="py-1">
-                <form method="post" enctype="multipart/form-data"
-                      action="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}"
-                      class="d-flex align-items-center gap-2">
-                  <input type="file" name="file" class="form-control form-control-sm" style="max-width:280px">
-                  <button type="submit" class="btn btn-xs btn-outline-secondary text-nowrap">+ Add file</button>
-                </form>
-              </td>
-            </tr>
+              {# Upload-more row #}
+              <tr>
+                <td class="text-center"><span class="text-muted">—</span></td>
+                <td class="text-muted small">—</td>
+                <td>
+                  <form method="post" enctype="multipart/form-data"
+                        action="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}"
+                        class="d-flex align-items-center gap-2">
+                    <input type="file" name="file" class="form-control form-control-sm" style="max-width:240px">
+                    <button type="submit" class="btn btn-xs btn-outline-secondary text-nowrap">+ Add</button>
+                  </form>
+                </td>
+                <td></td>
+              </tr>
             {% else %}
-            <tr>
-              <td class="fw-semibold">
-                {{ doc.label }}{% if doc.required %}<span class="text-danger">*</span>{% endif %}
-              </td>
-              <td class="text-center">
-                {% if doc.required %}<span class="text-danger fw-bold">Yes</span>{% else %}<span class="text-muted">No</span>{% endif %}
-              </td>
-              <td class="text-center">
-                <span class="text-danger">&#10007;</span>
-              </td>
-              <td colspan="5">
-                <form method="post" enctype="multipart/form-data"
-                      action="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}"
-                      class="d-flex align-items-center gap-2">
-                  <input type="file" name="file" class="form-control form-control-sm" style="max-width:280px">
-                  <button type="submit" class="btn btn-xs btn-outline-dark text-nowrap">Upload</button>
-                </form>
-              </td>
-            </tr>
+              {# No uploads yet #}
+              <tr>
+                <td class="fw-semibold">{{ doc.label }}</td>
+                <td class="text-center">
+                  <span class="text-danger">&#10007;</span>
+                </td>
+                <td class="text-muted small">—</td>
+                <td>
+                  <form method="post" enctype="multipart/form-data"
+                        action="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}"
+                        class="d-flex align-items-center gap-2">
+                    <input type="file" name="file" class="form-control form-control-sm" style="max-width:240px">
+                    <button type="submit" class="btn btn-xs btn-outline-dark text-nowrap">Upload</button>
+                  </form>
+                </td>
+                <td></td>
+              </tr>
             {% endif %}
             {% endfor %}
           </tbody>
@@ -312,6 +257,25 @@
       {% set panel_ns = namespace(first=true) %}
       {% if not w2_docs %}{% set panel_ns.first = false %}{% endif %}
       <div id="panel-w2" class="extracted-panel {% if not (w2_docs == parsed_docs | selectattr('doc_type', 'equalto', 'w2') | list or true) %}d-none{% endif %}">
+
+        {# Per-document parse controls #}
+        {% for pd in w2_docs %}
+        <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-white border rounded small">
+          <span class="fw-semibold text-truncate" style="max-width:220px" title="{{ pd.original_name }}">{{ pd.original_name }}</span>
+          <button type="button" class="btn btn-xs btn-outline-secondary ms-auto parse-btn"
+                  data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}">&#8635; Parse</button>
+          <button type="button" class="btn btn-xs btn-outline-primary parse-btn"
+                  data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}" data-ocr="1">OCR Parse</button>
+          {% if azure_configured %}
+          <button type="button" class="btn btn-xs btn-outline-success azure-parse-btn"
+                  data-url="{{ url_for('preparer.azure_enhance', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}">&#9889; Azure</button>
+          {% endif %}
+          <span class="parser-status" id="parse-status-{{ pd.upload_id }}"></span>
+        </div>
+        {% endfor %}
 
         {# Top half: qualitative info side-by-side #}
         <div class="row g-3 mb-3">
@@ -458,6 +422,25 @@
       {# ════ 1099-B Panel ════ #}
       {% if b1099_docs %}
       <div id="panel-1099b" class="extracted-panel d-none">
+
+        {# Per-document parse controls #}
+        {% for pd in b1099_docs %}
+        <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-white border rounded small">
+          <span class="fw-semibold text-truncate" style="max-width:220px" title="{{ pd.original_name }}">{{ pd.original_name }}</span>
+          <button type="button" class="btn btn-xs btn-outline-secondary ms-auto parse-btn"
+                  data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}">&#8635; Parse</button>
+          <button type="button" class="btn btn-xs btn-outline-primary parse-btn"
+                  data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}" data-ocr="1">OCR Parse</button>
+          {% if azure_configured %}
+          <button type="button" class="btn btn-xs btn-outline-success azure-parse-btn"
+                  data-url="{{ url_for('preparer.azure_enhance', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}">&#9889; Azure</button>
+          {% endif %}
+          <span class="parser-status" id="parse-status-{{ pd.upload_id }}"></span>
+        </div>
+        {% endfor %}
 
         {# Per-account summary #}
         <div class="card shadow-sm mb-3">
@@ -681,6 +664,24 @@
       {# ════ Form 1098 Panel ════ #}
       {% if f1098_docs %}
       <div id="panel-1098" class="extracted-panel d-none">
+        {# Per-document parse controls #}
+        {% for pd in f1098_docs %}
+        <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-white border rounded small">
+          <span class="fw-semibold text-truncate" style="max-width:220px" title="{{ pd.original_name }}">{{ pd.original_name }}</span>
+          <button type="button" class="btn btn-xs btn-outline-secondary ms-auto parse-btn"
+                  data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}">&#8635; Parse</button>
+          <button type="button" class="btn btn-xs btn-outline-primary parse-btn"
+                  data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}" data-ocr="1">OCR Parse</button>
+          {% if azure_configured %}
+          <button type="button" class="btn btn-xs btn-outline-success azure-parse-btn"
+                  data-url="{{ url_for('preparer.azure_enhance', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}">&#9889; Azure</button>
+          {% endif %}
+          <span class="parser-status" id="parse-status-{{ pd.upload_id }}"></span>
+        </div>
+        {% endfor %}
         {% for pd in f1098_docs %}
         <div class="card shadow-sm mb-2">
           <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
@@ -727,6 +728,19 @@
       {# ════ Prior Year Return Panel ════ #}
       {% if py_docs %}
       <div id="panel-prior-year" class="extracted-panel d-none">
+        {# Per-document parse controls #}
+        {% for pd in py_docs %}
+        <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-white border rounded small">
+          <span class="fw-semibold text-truncate" style="max-width:220px" title="{{ pd.original_name }}">{{ pd.original_name }}</span>
+          <button type="button" class="btn btn-xs btn-outline-secondary ms-auto parse-btn"
+                  data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}">&#8635; Parse</button>
+          <button type="button" class="btn btn-xs btn-outline-primary parse-btn"
+                  data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
+                  data-year="{{ year }}" data-ocr="1">OCR Parse</button>
+          <span class="parser-status" id="parse-status-{{ pd.upload_id }}"></span>
+        </div>
+        {% endfor %}
         {% for pd in py_docs %}
         {% set py = pd.extracted_json.get('prior_year_return', [{}])[0] if pd.extracted_json.get('prior_year_return') else {} %}
         <div class="card shadow-sm mb-3">
@@ -1113,6 +1127,50 @@
           btn.classList.add('active');
           var panel = document.getElementById(btn.dataset.panel);
           if (panel) panel.classList.remove('d-none');
+        });
+      });
+
+      // Parse / Azure buttons with inline status
+      function runParser(btn, url, year, ocr) {
+        var statusEl = btn.closest('.d-flex').querySelector('.parser-status');
+        if (!statusEl) return;
+        btn.disabled = true;
+        statusEl.textContent = 'Running\u2026';
+        statusEl.className = 'parser-status running';
+
+        var body = new URLSearchParams({year: year});
+        if (ocr) body.append('ocr', '1');
+
+        fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+          body: body.toString(),
+        })
+        .then(function(r) {
+          if (r.ok) {
+            statusEl.textContent = '\u2713 Done \u2014 reload to see results';
+            statusEl.className = 'parser-status success';
+          } else {
+            statusEl.textContent = 'Error (HTTP ' + r.status + ')';
+            statusEl.className = 'parser-status error';
+          }
+        })
+        .catch(function() {
+          statusEl.textContent = 'Network error';
+          statusEl.className = 'parser-status error';
+        })
+        .finally(function() { btn.disabled = false; });
+      }
+
+      document.querySelectorAll('.parse-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          runParser(btn, btn.dataset.url, btn.dataset.year, btn.dataset.ocr);
+        });
+      });
+
+      document.querySelectorAll('.azure-parse-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          runParser(btn, btn.dataset.url, btn.dataset.year, false);
         });
       });
     })();

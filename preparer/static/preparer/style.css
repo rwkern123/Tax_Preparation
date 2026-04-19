@@ -82,3 +82,31 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* ─── Collapsible sidebar ─── */
+#preparerSidebar {
+  border-right: 1px solid #dee2e6;
+  background: #fff;
+}
+.sidebar-client-link {
+  color: #212529;
+  border-bottom: 1px solid #f0f0f0;
+}
+.sidebar-client-link:hover {
+  background: #f8f9fa;
+  color: #0d6efd;
+}
+.sidebar-client-active {
+  background: #e8f0fe;
+  font-weight: 600;
+  color: #0d47a1 !important;
+}
+
+/* ─── Parser status inline ─── */
+.parser-status {
+  font-size: 0.8rem;
+  margin-left: 8px;
+}
+.parser-status.success { color: #198754; }
+.parser-status.error   { color: #dc3545; }
+.parser-status.running { color: #0dcaf0; }

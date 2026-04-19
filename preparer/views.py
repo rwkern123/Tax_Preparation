@@ -23,6 +23,26 @@ preparer_bp = Blueprint(
     static_url_path="/static",
 )
 
+
+@preparer_bp.app_context_processor
+def _inject_sidebar():
+    """Inject sidebar client list into all preparer templates."""
+    from flask import session, request as _req
+    if not session.get("logged_in"):
+        return {}
+    try:
+        ctx = _tax_year_context()
+        year = int(_req.args.get("year", ctx["current_year"]))
+        clients = get_preparer_client_list(
+            portal_db=_portal_db(),
+            preparer_db=_preparer_db(),
+            tax_year=year,
+        )
+        return {"sidebar_clients": clients, "sidebar_year": year}
+    except Exception:
+        return {}
+
+
 def _tax_year_context() -> dict:
     site_cfg = current_app.config.get("SITE_CONFIG", {})
     current = site_cfg.get("tax_year", 2024)

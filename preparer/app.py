@@ -46,6 +46,20 @@ def create_app(config: dict = None) -> Flask:
         return redirect(url_for("preparer.client_list"))
 
     # Template filters
+    @app.template_filter("fmt_datetime")
+    def fmt_datetime(value):
+        """Format a SQLite datetime string ('YYYY-MM-DD HH:MM:SS') as 'HH:MM MMM DD, YYYY'."""
+        if not value:
+            return "--"
+        from datetime import datetime
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                dt = datetime.strptime(str(value).strip(), fmt)
+                return dt.strftime("%H:%M %b %d, %Y")
+            except ValueError:
+                continue
+        return str(value)
+
     @app.template_filter("fmt_amount")
     def fmt_amount(value):
         if value is None:

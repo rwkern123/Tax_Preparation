@@ -12,17 +12,19 @@ Forms that clients receive and bring to their preparer — need extraction suppo
 | ~~**1099-R**~~ | ~~Retirement / IRA / pension distributions~~ | ~~High~~ — **Completed April 2026** |
 | ~~**1099-NEC**~~ | ~~Non-employee compensation~~ | ~~High~~ — **Completed April 2026** |
 | ~~**Prior Year Form 1040**~~ | ~~Prior-year return parsing (local regex + Azure)~~ | ~~High~~ — **Completed April 2026** |
+| ~~**1099-G**~~ | ~~Unemployment compensation, state tax refunds~~ | ~~High~~ — **Completed April 2026** |
+| ~~**1099-MISC**~~ | ~~Royalties, rent, prizes, attorney fees~~ | ~~Medium~~ — **Completed April 2026** |
+| ~~**1098-T**~~ | ~~Tuition / education credits (AOTC, Lifetime Learning)~~ | ~~Medium~~ — **Completed April 2026** |
+| ~~**1099-Q**~~ | ~~Qualified education program (529) distributions~~ | ~~Low~~ — **Completed April 2026** |
+| ~~**1099-SA**~~ | ~~HSA / MSA distributions~~ | ~~Low~~ — **Completed April 2026** |
 | **SSA-1099** | Social Security benefits | High |
-| **1099-G** | Unemployment compensation, state tax refunds | High |
-| **1099-MISC** | Royalties, rent, prizes, attorney fees | Medium |
-| **1098-T** | Tuition / education credits (AOTC, Lifetime Learning) | Medium |
-| **1099-Q** | Qualified education program (529) distributions | Low |
-| **1099-SA** | HSA / MSA distributions | Low |
 
 **Notes:**
 - 1099-NEC extractor completed April 2026 — serves as template for remaining forms.
 - 1099-R extractor completed April 2026 — dataclass, parser, classifier, `main.py` wiring, checklist section F, questions.
 - Prior Year Form 1040 completed April 2026 — `src/extract/prior_year_return.py` (local regex) + `src/extract/azure_prior_year_return.py` (Azure Document Intelligence). Surfaced in client detail UI.
+- 1099-G, 1099-MISC, 1098-T, 1099-Q, 1099-SA completed April 2026 — dataclasses, local regex parsers, Azure backup extractors (1099-G/MISC/1098-T use dedicated Azure prebuilt models; 1099-Q/SA use `prebuilt-layout` fallback), classification patterns, and `main.py` wiring. Blank forms copied to `examples/forms/blank_forms/`.
+- SSA-1099 is issued by the Social Security Administration, not the IRS — no Azure prebuilt model exists. Will require custom regex parser only.
 - Each new form requires: dataclass in `models.py`, extractor in `src/extract/`, classification patterns in `classify.py`, wiring in `main.py`, and checklist/questions entries.
 
 ---
@@ -101,6 +103,6 @@ Suggested approach: abstract a broker adapter interface; implement per-broker ad
 
 ## 9. Documentation Gaps
 
-- **Azure setup guide incomplete** — Azure Document Intelligence endpoint/API key acquisition and configuration steps not fully documented. (Azure extractors exist for W-2, 1099, and prior-year Form 1040 — but onboarding a new user requires undocumented setup.)
+- **Azure setup guide incomplete** — Azure Document Intelligence endpoint/API key acquisition and configuration steps not fully documented. (Azure extractors exist for W-2, brokerage 1099-B, 1098, 1099-G, 1099-MISC, 1098-T, 1099-Q, 1099-SA, and prior-year Form 1040 — but onboarding a new user requires undocumented setup.)
 - **OCR setup on Windows** — Tesseract + Poppler PATH configuration not documented.
 - **No troubleshooting guide** for common parse failures (low-confidence extractions, blank fields).

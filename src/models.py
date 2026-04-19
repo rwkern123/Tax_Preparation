@@ -335,6 +335,118 @@ class PriorYearReturnData:
 
 
 @dataclass
+class Form1099GData:
+    """1099-G: Certain Government Payments (unemployment, state tax refunds)."""
+    payer_name: Optional[str] = None
+    payer_tin: Optional[str] = None
+    recipient_name: Optional[str] = None
+    recipient_tin: Optional[str] = None
+    account_number: Optional[str] = None
+    year: Optional[int] = None
+    box1_unemployment_compensation: Optional[float] = None
+    box2_state_local_tax_refund: Optional[float] = None
+    box4_fed_withholding: Optional[float] = None
+    box5_rtaa_payments: Optional[float] = None
+    box6_taxable_grants: Optional[float] = None
+    box7_agriculture_payments: Optional[float] = None
+    box8_trade_or_business: bool = False
+    box9_market_gain: Optional[float] = None
+    box10a_state: Optional[str] = None
+    box10b_state_id: Optional[str] = None
+    box11_state_income_tax_withheld: Optional[float] = None
+    is_corrected: bool = False
+    confidence: float = 0.0
+    extraction_source: str = "local"
+
+
+@dataclass
+class Form1099MISCData:
+    """1099-MISC: Miscellaneous Information (rents, royalties, prizes, attorney fees)."""
+    payer_name: Optional[str] = None
+    payer_tin: Optional[str] = None
+    recipient_name: Optional[str] = None
+    recipient_tin: Optional[str] = None
+    account_number: Optional[str] = None
+    year: Optional[int] = None
+    box1_rents: Optional[float] = None
+    box2_royalties: Optional[float] = None
+    box3_other_income: Optional[float] = None
+    box4_fed_withholding: Optional[float] = None
+    box5_fishing_boat_proceeds: Optional[float] = None
+    box6_medical_payments: Optional[float] = None
+    box7_direct_sales: bool = False
+    box8_substitute_payments: Optional[float] = None
+    box10_crop_insurance: Optional[float] = None
+    box12_section_409a_deferrals: Optional[float] = None
+    box14_gross_proceeds_attorney: Optional[float] = None
+    box15_section_409a_income: Optional[float] = None
+    box16_state_tax_withheld: Optional[float] = None
+    box17_state_payer_no: Optional[str] = None
+    box18_state_income: Optional[float] = None
+    is_corrected: bool = False
+    confidence: float = 0.0
+    extraction_source: str = "local"
+
+
+@dataclass
+class Form1098TData:
+    """1098-T: Tuition Statement (education credits — American Opportunity, Lifetime Learning)."""
+    filer_name: Optional[str] = None
+    filer_tin: Optional[str] = None
+    student_name: Optional[str] = None
+    student_tin: Optional[str] = None
+    account_number: Optional[str] = None
+    year: Optional[int] = None
+    box1_payments_received: Optional[float] = None
+    box4_adjustments_prior_year: Optional[float] = None
+    box5_scholarships_grants: Optional[float] = None
+    box6_adjustments_scholarships: Optional[float] = None
+    box7_prior_year_amount: bool = False    # amounts include next Jan-Mar
+    box8_half_time_student: bool = False
+    box9_graduate_student: bool = False
+    box10_insurance_reimbursements: Optional[float] = None
+    is_corrected: bool = False
+    confidence: float = 0.0
+    extraction_source: str = "local"
+
+
+@dataclass
+class Form1099QData:
+    """1099-Q: Payments from Qualified Education Programs (529 / Coverdell)."""
+    payer_name: Optional[str] = None
+    recipient_name: Optional[str] = None
+    recipient_tin: Optional[str] = None
+    account_number: Optional[str] = None
+    year: Optional[int] = None
+    box1_gross_distribution: Optional[float] = None
+    box2_earnings: Optional[float] = None
+    box3_basis: Optional[float] = None
+    trustee_to_trustee: bool = False        # box 4 checkbox
+    qualified_tuition_program: bool = False  # box 5 checkbox — Coverdell ESA if False
+    is_corrected: bool = False
+    confidence: float = 0.0
+    extraction_source: str = "local"
+
+
+@dataclass
+class Form1099SAData:
+    """1099-SA: Distributions from HSA, Archer MSA, or Medicare Advantage MSA."""
+    payer_name: Optional[str] = None
+    recipient_name: Optional[str] = None
+    recipient_tin: Optional[str] = None
+    account_number: Optional[str] = None
+    year: Optional[int] = None
+    box1_gross_distribution: Optional[float] = None
+    box2_earnings_on_excess: Optional[float] = None
+    box3_distribution_code: Optional[str] = None
+    box4_fmv_on_date_of_death: Optional[float] = None
+    box5_account_type: Optional[str] = None  # "HSA", "Archer MSA", or "Medicare Advantage MSA"
+    is_corrected: bool = False
+    confidence: float = 0.0
+    extraction_source: str = "local"
+
+
+@dataclass
 class ExtractionResult:
     w2: List[W2Data] = field(default_factory=list)
     brokerage_1099: List[Brokerage1099Data] = field(default_factory=list)
@@ -342,6 +454,11 @@ class ExtractionResult:
     form_1098: List[Form1098Data] = field(default_factory=list)
     form_1099_nec: List[Form1099NECData] = field(default_factory=list)
     form_1099_r: List[Form1099RData] = field(default_factory=list)
+    form_1099_g: List[Form1099GData] = field(default_factory=list)
+    form_1099_misc: List[Form1099MISCData] = field(default_factory=list)
+    form_1098_t: List[Form1098TData] = field(default_factory=list)
+    form_1099_q: List[Form1099QData] = field(default_factory=list)
+    form_1099_sa: List[Form1099SAData] = field(default_factory=list)
     unknown: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -352,5 +469,10 @@ class ExtractionResult:
             "form_1098": [asdict(item) for item in self.form_1098],
             "form_1099_nec": [asdict(item) for item in self.form_1099_nec],
             "form_1099_r": [asdict(item) for item in self.form_1099_r],
+            "form_1099_g": [asdict(item) for item in self.form_1099_g],
+            "form_1099_misc": [asdict(item) for item in self.form_1099_misc],
+            "form_1098_t": [asdict(item) for item in self.form_1098_t],
+            "form_1099_q": [asdict(item) for item in self.form_1099_q],
+            "form_1099_sa": [asdict(item) for item in self.form_1099_sa],
             "unknown": self.unknown,
         }

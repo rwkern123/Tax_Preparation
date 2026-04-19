@@ -22,6 +22,16 @@ from src.extract.form_1099b_trades import (
 from src.extract.form_1098 import parse_1098_text
 from src.extract.form_1099_nec import parse_1099_nec_text
 from src.extract.form_1099_r import parse_1099_r_text
+from src.extract.form_1099_g import parse_1099_g_text
+from src.extract.form_1099_misc import parse_1099_misc_text
+from src.extract.form_1098_t import parse_1098_t_text
+from src.extract.form_1099_q import parse_1099_q_text
+from src.extract.form_1099_sa import parse_1099_sa_text
+from src.extract.azure_1099_g import AZURE_CONFIDENCE_THRESHOLD as _1099g_AZURE_THRESH, parse_1099_g_azure
+from src.extract.azure_1099_misc import AZURE_CONFIDENCE_THRESHOLD as _1099misc_AZURE_THRESH, parse_1099_misc_azure
+from src.extract.azure_1098_t import AZURE_CONFIDENCE_THRESHOLD as _1098t_AZURE_THRESH, parse_1098_t_azure
+from src.extract.azure_1099_q import AZURE_CONFIDENCE_THRESHOLD as _1099q_AZURE_THRESH, parse_1099_q_azure
+from src.extract.azure_1099_sa import AZURE_CONFIDENCE_THRESHOLD as _1099sa_AZURE_THRESH, parse_1099_sa_azure
 from src.extract.azure_w2 import AZURE_CONFIDENCE_THRESHOLD, parse_w2_azure
 from src.extract.azure_1099 import AZURE_CONFIDENCE_THRESHOLD as _1099_AZURE_THRESH, parse_brokerage_1099_azure
 from src.extract.azure_1098 import AZURE_CONFIDENCE_THRESHOLD as _1098_AZURE_THRESH, parse_1098_azure
@@ -247,6 +257,116 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
             elif doc_type == "form_1099_r":
                 parsed = parse_1099_r_text(text)
                 extraction.form_1099_r.append(parsed)
+                key_fields = asdict(parsed)
+                issuer = parsed.payer_name
+            elif doc_type == "form_1099_g":
+                parsed = parse_1099_g_text(text)
+                if (
+                    config.enable_azure
+                    and parsed.confidence < _1099g_AZURE_THRESH
+                    and config.azure_endpoint
+                    and config.azure_api_key
+                ):
+                    local_conf = parsed.confidence
+                    azure_parsed = parse_1099_g_azure(path, config.azure_endpoint, config.azure_api_key)
+                    if azure_parsed is not None and azure_parsed.confidence >= local_conf:
+                        parsed = azure_parsed
+                        notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
+                    else:
+                        notes.append(
+                            f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
+                        )
+                elif config.enable_azure and parsed.confidence >= _1099g_AZURE_THRESH:
+                    notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
+                extraction.form_1099_g.append(parsed)
+                key_fields = asdict(parsed)
+                issuer = parsed.payer_name
+            elif doc_type == "form_1099_misc":
+                parsed = parse_1099_misc_text(text)
+                if (
+                    config.enable_azure
+                    and parsed.confidence < _1099misc_AZURE_THRESH
+                    and config.azure_endpoint
+                    and config.azure_api_key
+                ):
+                    local_conf = parsed.confidence
+                    azure_parsed = parse_1099_misc_azure(path, config.azure_endpoint, config.azure_api_key)
+                    if azure_parsed is not None and azure_parsed.confidence >= local_conf:
+                        parsed = azure_parsed
+                        notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
+                    else:
+                        notes.append(
+                            f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
+                        )
+                elif config.enable_azure and parsed.confidence >= _1099misc_AZURE_THRESH:
+                    notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
+                extraction.form_1099_misc.append(parsed)
+                key_fields = asdict(parsed)
+                issuer = parsed.payer_name
+            elif doc_type == "form_1098_t":
+                parsed = parse_1098_t_text(text)
+                if (
+                    config.enable_azure
+                    and parsed.confidence < _1098t_AZURE_THRESH
+                    and config.azure_endpoint
+                    and config.azure_api_key
+                ):
+                    local_conf = parsed.confidence
+                    azure_parsed = parse_1098_t_azure(path, config.azure_endpoint, config.azure_api_key)
+                    if azure_parsed is not None and azure_parsed.confidence >= local_conf:
+                        parsed = azure_parsed
+                        notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
+                    else:
+                        notes.append(
+                            f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
+                        )
+                elif config.enable_azure and parsed.confidence >= _1098t_AZURE_THRESH:
+                    notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
+                extraction.form_1098_t.append(parsed)
+                key_fields = asdict(parsed)
+                issuer = parsed.filer_name
+            elif doc_type == "form_1099_q":
+                parsed = parse_1099_q_text(text)
+                if (
+                    config.enable_azure
+                    and parsed.confidence < _1099q_AZURE_THRESH
+                    and config.azure_endpoint
+                    and config.azure_api_key
+                ):
+                    local_conf = parsed.confidence
+                    azure_parsed = parse_1099_q_azure(path, config.azure_endpoint, config.azure_api_key)
+                    if azure_parsed is not None and azure_parsed.confidence >= local_conf:
+                        parsed = azure_parsed
+                        notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
+                    else:
+                        notes.append(
+                            f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
+                        )
+                elif config.enable_azure and parsed.confidence >= _1099q_AZURE_THRESH:
+                    notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
+                extraction.form_1099_q.append(parsed)
+                key_fields = asdict(parsed)
+                issuer = parsed.payer_name
+            elif doc_type == "form_1099_sa":
+                parsed = parse_1099_sa_text(text)
+                if (
+                    config.enable_azure
+                    and parsed.confidence < _1099sa_AZURE_THRESH
+                    and config.azure_endpoint
+                    and config.azure_api_key
+                ):
+                    local_conf = parsed.confidence
+                    azure_parsed = parse_1099_sa_azure(path, config.azure_endpoint, config.azure_api_key)
+                    if azure_parsed is not None and azure_parsed.confidence >= local_conf:
+                        parsed = azure_parsed
+                        notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
+                    else:
+                        notes.append(
+                            f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
+                        )
+                elif config.enable_azure and parsed.confidence >= _1099sa_AZURE_THRESH:
+                    notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
+                extraction.form_1099_sa.append(parsed)
                 key_fields = asdict(parsed)
                 issuer = parsed.payer_name
             else:

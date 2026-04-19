@@ -117,6 +117,7 @@ class Form1098Data:
     real_estate_taxes: Optional[float] = None
     mortgage_principal_outstanding: Optional[float] = None
     confidence: float = 0.0
+    extraction_source: str = "local"  # "local" | "azure"
 
 
 @dataclass

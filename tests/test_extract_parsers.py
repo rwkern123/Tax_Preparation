@@ -305,6 +305,47 @@ class TestParsers(unittest.TestCase):
         data = parse_1098_text(text)
         self.assertEqual(data.mortgage_interest_received, -1200.00)
 
+    def test_parse_1098_linearised_rocket_style(self):
+        """Regression: Rocket Mortgage / Mr. Cooper two-column linearised layout."""
+        text = (
+            "RYAN KERN Nationstar Mortgage LLC d/b/a Mr. Cooper\n"
+            "YEAR: 2024\n"
+            "6311 WOODBROOK LN 8950 Cypress Waters Blvd.\n"
+            "ACCT #: 0732961461\n"
+            "HOUSTON, TX 77008 Coppell, TX 75019\n"
+            "PRINCIPAL RECONCILIATION\n"
+            "BEG BAL: $411,332.67\n"
+            "PROPERTY TAXES: $7,242.35\n"
+            "APPLIED BALANCE: $3,202.32\n"
+            "ENDING BAL: $408,130.35\n"
+            "MORTGAGE INTEREST RECEIVED FROM\n"
+            "CURRENT OPTIONAL INS PYMT: $0.00\n"
+            "PAYER(S)/BORROWER(S): $17,704.08\n"
+            "CORRECTED (if checked)\n"
+            "RECIPIENT\ufffdS/LENDER\ufffdS name, street address, city or town, state or *Caution: the amount shown may OMB No. 1545-1380\n"
+            "province, country, ZIP or foreign postal code, and telephone no. not be fully deductible by you.\n"
+            "Limits based on the loan amount 1098 Mortgage\n"
+            "Nationstar Mortgage LLC d/b/a Mr. Cooper and the cost and value of the Form\n"
+            "1 Mortgage interest received from payer(s)/borrower(s)* Copy B\n"
+            "$ 17,704.08\n"
+            "RECIPIENT\ufffdS/LENDER\ufffdS TIN PAYER\ufffdS/BORROWER\ufffdS TIN 2 Outstanding mortgage 3 Mortgage origination date Borrower\n"
+            "principal The information in boxes 1\n"
+            "75-2921540 XXX-XX-0238 $ 411,332.67 07/07/2023 through 9 and 11 is\n"
+            "4 Refund of overpaid 5 Mortgage insurance\n"
+            "PAYER\ufffdS/BORROWER\ufffdS name $ 0.00 $ 0.00 the IRS. If you are required\n"
+            "to file a return, a negligence\n"
+            "RYAN KERN 6 Points paid on purchase of principal residence penalty or other sanction\n"
+            "$ 0.00 may be imposed on you if\n"
+        )
+        data = parse_1098_text(text)
+        self.assertEqual(data.lender_name, "Nationstar Mortgage LLC d/b/a Mr. Cooper")
+        self.assertEqual(data.payer_name, "RYAN KERN")
+        self.assertEqual(data.year, 2024)
+        self.assertEqual(data.mortgage_interest_received, 17704.08)
+        self.assertEqual(data.mortgage_principal_outstanding, 411332.67)
+        self.assertEqual(data.real_estate_taxes, 7242.35)
+        self.assertGreaterEqual(data.confidence, 0.75)
+
     def test_parse_brokerage_dollar_amount(self):
         text = """
         2024 Composite Statement

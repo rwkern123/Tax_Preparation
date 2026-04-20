@@ -13,6 +13,9 @@ from .database import (
     reparse_document,
     reparse_document_azure,
     delete_parsed_document,
+    get_manual_entries,
+    save_manual_entry,
+    delete_manual_entry,
 )
 
 preparer_bp = Blueprint(
@@ -295,7 +298,8 @@ def client_detail(user_id: int):
     questionnaire_sections = get_section_for_filing_status(QUESTIONNAIRE_SECTIONS, filing_status)
 
     from .form_1040_filler import aggregate_1040_data
-    form_1040_data = aggregate_1040_data(parsed_docs, user, year)
+    manual_entries = get_manual_entries(_preparer_db(), user_id, year)
+    form_1040_data = aggregate_1040_data(parsed_docs, user, year, manual_entries=manual_entries)
 
     return render_template(
         "preparer/client_detail.html",
@@ -312,6 +316,7 @@ def client_detail(user_id: int):
         yoy_rows=yoy_rows,
         azure_configured=azure_configured,
         form_1040_data=form_1040_data,
+        manual_entries=manual_entries,
     )
 
 
@@ -662,14 +667,39 @@ def import_clients():
     return redirect(url_for("preparer.client_list"))
 
 
+@preparer_bp.route("/client/<int:user_id>/manual-entry/<int:year>", methods=["POST"])
+@login_required
+def save_manual_entry_route(user_id: int, year: int):
+    name = request.form.get("name", "").strip()
+    category = request.form.get("category", "charitable_cash")
+    try:
+        amount = float(request.form.get("amount", "0").replace(",", ""))
+    except ValueError:
+        amount = 0.0
+    if name and amount > 0:
+        save_manual_entry(_preparer_db(), user_id, year, category, name, amount)
+        flash(f"Entry '{name}' saved.", "success")
+    else:
+        flash("Name and a positive amount are required.", "error")
+    return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+
+@preparer_bp.route("/client/<int:user_id>/manual-entry/<int:year>/<int:entry_id>/delete", methods=["POST"])
+@login_required
+def delete_manual_entry_route(user_id: int, year: int, entry_id: int):
+    delete_manual_entry(_preparer_db(), entry_id, user_id)
+    flash("Entry deleted.", "success")
+    return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+
 def _generate_1040_pdf(user_id: int, year: int) -> bytes:
     from portal.database import get_user_by_id
     from .form_1040_filler import aggregate_1040_data, fill_1040_pdf
 
     user        = get_user_by_id(_portal_db(), user_id)
     parsed_docs = get_parsed_documents(_preparer_db(), user_id, year)
-    data        = aggregate_1040_data(parsed_docs, user or {}, year)
-    # Embed user so fill_1040_pdf can access name/SSN/filing status
+    manual_entries = get_manual_entries(_preparer_db(), user_id, year)
+    data        = aggregate_1040_data(parsed_docs, user or {}, year, manual_entries=manual_entries)
     data["_user"] = user or {}
     pdf_forms_dir = str(Path(current_app.root_path).parent / "pdf_forms")
     return fill_1040_pdf(data, pdf_forms_dir)

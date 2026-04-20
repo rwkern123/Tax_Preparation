@@ -23,6 +23,16 @@ CREATE TABLE IF NOT EXISTS parsed_documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_parsed_user_year ON parsed_documents(user_id, tax_year);
+
+CREATE TABLE IF NOT EXISTS manual_entries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    tax_year    INTEGER NOT NULL,
+    category    TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    amount      REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_manual_user_year ON manual_entries(user_id, tax_year);
 """
 
 
@@ -221,6 +231,40 @@ def delete_parsed_document(db_path: str, upload_id: int) -> dict | None:
             d["flags_json"] = json.loads(d["flags_json"])
             return d
         return None
+    finally:
+        conn.close()
+
+
+def get_manual_entries(db_path: str, user_id: int, tax_year: int) -> list[dict]:
+    conn = _get_db(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM manual_entries WHERE user_id=? AND tax_year=? ORDER BY category, name",
+            (user_id, tax_year),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def save_manual_entry(db_path: str, user_id: int, tax_year: int, category: str, name: str, amount: float) -> int:
+    conn = _get_db(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO manual_entries (user_id, tax_year, category, name, amount) VALUES (?,?,?,?,?)",
+            (user_id, tax_year, category, name, amount),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def delete_manual_entry(db_path: str, entry_id: int, user_id: int) -> None:
+    conn = _get_db(db_path)
+    try:
+        conn.execute("DELETE FROM manual_entries WHERE id=? AND user_id=?", (entry_id, user_id))
+        conn.commit()
     finally:
         conn.close()
 

@@ -1527,6 +1527,56 @@
       <div class="alert alert-info mb-3">No parsed documents with extractable data. Parse documents first to populate the tax return worksheet.</div>
     {% endif %}
 
+    {# Charitable Contributions Manual Entry #}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2 fw-semibold small">Charitable Contributions (Manual Entry)</div>
+      <div class="card-body p-2">
+        {% if manual_entries %}
+        <table class="table table-sm align-middle mb-2">
+          <thead class="table-light">
+            <tr><th>Organization</th><th>Type</th><th class="text-end">Amount</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for e in manual_entries %}
+            {% if e.category in ('charitable_cash','charitable_noncash') %}
+            <tr>
+              <td class="small">{{ e.name }}</td>
+              <td class="small">{{ 'Cash' if e.category == 'charitable_cash' else 'Noncash' }}</td>
+              <td class="text-end amount small">{{ "${:,.0f}".format(e.amount) }}</td>
+              <td>
+                <form method="post" action="{{ url_for('preparer.delete_manual_entry_route', user_id=user.id, year=year, entry_id=e.id) }}" style="display:inline">
+                  <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-1" onclick="return confirm('Delete this entry?')">✕</button>
+                </form>
+              </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+        <form method="post" action="{{ url_for('preparer.save_manual_entry_route', user_id=user.id, year=year) }}" class="row g-2 align-items-end">
+          <div class="col-sm-5">
+            <label class="form-label form-label-sm mb-1">Organization Name</label>
+            <input type="text" name="name" class="form-control form-control-sm" placeholder="e.g. Red Cross" required>
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label form-label-sm mb-1">Annual Amount</label>
+            <input type="number" name="amount" class="form-control form-control-sm" step="0.01" min="0.01" placeholder="0.00" required>
+          </div>
+          <div class="col-sm-2">
+            <label class="form-label form-label-sm mb-1">Type</label>
+            <select name="category" class="form-select form-select-sm">
+              <option value="charitable_cash">Cash</option>
+              <option value="charitable_noncash">Noncash</option>
+            </select>
+          </div>
+          <div class="col-sm-2">
+            <button type="submit" class="btn btn-sm btn-primary w-100">Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="d-flex gap-2 mb-3">
       <a href="{{ url_for('preparer.tax_return_download', user_id=user.id, year=year) }}"
          class="btn btn-sm btn-outline-primary">

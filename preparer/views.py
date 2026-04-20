@@ -669,8 +669,10 @@ def _generate_1040_pdf(user_id: int, year: int) -> bytes:
     user        = get_user_by_id(_portal_db(), user_id)
     parsed_docs = get_parsed_documents(_preparer_db(), user_id, year)
     data        = aggregate_1040_data(parsed_docs, user or {}, year)
-    template    = str(Path(current_app.root_path).parent / "pdf_forms" / "Form_1040.pdf")
-    return fill_1040_pdf(data, template)
+    # Embed user so fill_1040_pdf can access name/SSN/filing status
+    data["_user"] = user or {}
+    pdf_forms_dir = str(Path(current_app.root_path).parent / "pdf_forms")
+    return fill_1040_pdf(data, pdf_forms_dir)
 
 
 @preparer_bp.route("/client/<int:user_id>/tax-return/pdf")

@@ -86,36 +86,43 @@
     {% if not doc_status %}
       <div class="alert alert-info">No documents expected. Ask the client to complete the questionnaire first.</div>
     {% else %}
+
+    {# ── Upload button ── #}
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <span class="text-muted small">{{ doc_status | length }} document type{{ 's' if doc_status | length != 1 }}</span>
+      <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadModal">
+        &#8593; Upload File
+      </button>
+    </div>
+
+    {# ── Document status table ── #}
     <div class="card shadow-sm">
       <div class="table-responsive">
         <table class="table align-middle mb-0">
           <thead class="table-light">
             <tr>
-              <th style="min-width:160px">Document</th>
-              <th class="text-center" style="width:80px">Uploaded</th>
+              <th style="min-width:200px">Document Type</th>
+              <th class="text-center" style="width:90px">Status</th>
               <th style="width:150px">Date &amp; Time</th>
               <th>Filename</th>
-              <th style="width:80px"></th>
+              <th style="width:50px"></th>
             </tr>
           </thead>
           <tbody>
             {% for doc in doc_status %}
             {% if doc.uploads %}
-              {# One row per uploaded file #}
               {% for upload in doc.uploads %}
               <tr>
                 {% if loop.first %}
-                <td rowspan="{{ doc.uploads | length + 1 }}" class="fw-semibold align-top pt-3">
+                <td rowspan="{{ doc.uploads | length }}" class="fw-semibold align-middle">
                   {{ doc.label }}
                 </td>
                 {% endif %}
                 <td class="text-center">
-                  <span class="text-success fw-bold">&#10003;</span>
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">Uploaded</span>
                 </td>
-                <td class="small text-nowrap text-muted">
-                  {{ upload.uploaded_at | fmt_datetime }}
-                </td>
-                <td class="small text-truncate" style="max-width:240px" title="{{ upload.original_name }}">
+                <td class="small text-nowrap text-muted">{{ upload.uploaded_at | fmt_datetime }}</td>
+                <td class="small text-truncate" style="max-width:280px" title="{{ upload.original_name }}">
                   {{ upload.original_name }}
                 </td>
                 <td class="text-end">
@@ -130,36 +137,14 @@
                 </td>
               </tr>
               {% endfor %}
-              {# Upload-more row #}
-              <tr>
-                <td class="text-center"><span class="text-muted">—</span></td>
-                <td class="text-muted small">—</td>
-                <td>
-                  <form method="post" enctype="multipart/form-data"
-                        action="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}"
-                        class="d-flex align-items-center gap-2">
-                    <input type="file" name="file" class="form-control form-control-sm" style="max-width:240px">
-                    <button type="submit" class="btn btn-xs btn-outline-secondary text-nowrap">+ Add</button>
-                  </form>
-                </td>
-                <td></td>
-              </tr>
             {% else %}
-              {# No uploads yet #}
               <tr>
-                <td class="fw-semibold">{{ doc.label }}</td>
+                <td class="fw-semibold text-muted">{{ doc.label }}</td>
                 <td class="text-center">
-                  <span class="text-danger">&#10007;</span>
+                  <span class="badge bg-light text-secondary border">Pending</span>
                 </td>
                 <td class="text-muted small">—</td>
-                <td>
-                  <form method="post" enctype="multipart/form-data"
-                        action="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}"
-                        class="d-flex align-items-center gap-2">
-                    <input type="file" name="file" class="form-control form-control-sm" style="max-width:240px">
-                    <button type="submit" class="btn btn-xs btn-outline-dark text-nowrap">Upload</button>
-                  </form>
-                </td>
+                <td class="text-muted small fst-italic">No file uploaded</td>
                 <td></td>
               </tr>
             {% endif %}
@@ -170,6 +155,156 @@
     </div>
     {% endif %}
   </div>
+
+  {# ── Upload Modal ── #}
+  <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:520px">
+      <div class="modal-content">
+        <form method="post" enctype="multipart/form-data" id="uploadModalForm">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-semibold" id="uploadModalLabel">Upload Document</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body pt-2">
+            <p class="text-muted small mb-3">Select the file and tag it with the document type you are uploading.</p>
+
+            {# Document type selector #}
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Document Type</label>
+              {% if doc_status %}
+              <select class="form-select" id="uploadCategory" name="_category_display" required>
+                <option value="" disabled selected>— Select document type —</option>
+                {% for doc in doc_status %}
+                <option value="{{ doc.category }}"
+                        data-url="{{ url_for('preparer.upload_for_client', user_id=user.id, year=year, category=doc.category) }}">
+                  {{ doc.label }}
+                </option>
+                {% endfor %}
+              </select>
+              {% else %}
+              <p class="text-muted small">Complete the questionnaire first to see expected document types.</p>
+              {% endif %}
+            </div>
+
+            {# Drop zone / file picker #}
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">File</label>
+              <div id="dropZone"
+                   class="border border-2 border-dashed rounded p-4 text-center"
+                   style="cursor:pointer; background:#f8f9fa; transition:background 0.15s">
+                <div id="dropZonePrompt">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="#adb5bd" class="mb-2 d-block mx-auto" viewBox="0 0 16 16">
+                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/>
+                    <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708z"/>
+                  </svg>
+                  <p class="mb-1 small fw-semibold text-secondary">Drop file here or <span class="text-primary">browse</span></p>
+                  <p class="mb-0 text-muted" style="font-size:0.75rem">PDF, CSV, XML accepted</p>
+                </div>
+                <div id="dropZoneFile" class="d-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#0d6efd" class="mb-1 d-block mx-auto" viewBox="0 0 16 16">
+                    <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1L14 5.5z"/>
+                  </svg>
+                  <p class="mb-0 small fw-semibold text-primary" id="dropZoneFileName"></p>
+                  <button type="button" class="btn btn-link btn-sm p-0 text-muted mt-1" id="dropZoneClear">Change file</button>
+                </div>
+                <input type="file" name="file" id="uploadFileInput"
+                       class="d-none" accept=".pdf,.csv,.xml">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="uploadSubmitBtn" disabled>Upload</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    var categorySelect = document.getElementById('uploadCategory');
+    var fileInput      = document.getElementById('uploadFileInput');
+    var dropZone       = document.getElementById('dropZone');
+    var dropPrompt     = document.getElementById('dropZonePrompt');
+    var dropFile       = document.getElementById('dropZoneFile');
+    var dropFileName   = document.getElementById('dropZoneFileName');
+    var dropClear      = document.getElementById('dropZoneClear');
+    var submitBtn      = document.getElementById('uploadSubmitBtn');
+    var form           = document.getElementById('uploadModalForm');
+
+    function checkReady() {
+      submitBtn.disabled = !(categorySelect && categorySelect.value && fileInput.files.length > 0);
+    }
+
+    function showFile(name) {
+      dropPrompt.classList.add('d-none');
+      dropFile.classList.remove('d-none');
+      dropFileName.textContent = name;
+      checkReady();
+    }
+
+    function clearFile() {
+      fileInput.value = '';
+      dropPrompt.classList.remove('d-none');
+      dropFile.classList.add('d-none');
+      dropFileName.textContent = '';
+      checkReady();
+    }
+
+    // Click anywhere in drop zone opens file picker
+    dropZone.addEventListener('click', function(e) {
+      if (e.target === dropClear || dropClear.contains(e.target)) return;
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', function() {
+      if (fileInput.files.length > 0) showFile(fileInput.files[0].name);
+      else clearFile();
+    });
+
+    if (dropClear) dropClear.addEventListener('click', function(e) {
+      e.stopPropagation();
+      clearFile();
+    });
+
+    // Drag-and-drop
+    dropZone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      dropZone.style.background = '#e9ecef';
+    });
+    dropZone.addEventListener('dragleave', function() {
+      dropZone.style.background = '#f8f9fa';
+    });
+    dropZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      dropZone.style.background = '#f8f9fa';
+      var dt = e.dataTransfer;
+      if (dt && dt.files.length > 0) {
+        // Assign dropped file to input via DataTransfer
+        var transfer = new DataTransfer();
+        transfer.items.add(dt.files[0]);
+        fileInput.files = transfer.files;
+        showFile(dt.files[0].name);
+      }
+    });
+
+    if (categorySelect) categorySelect.addEventListener('change', function() {
+      // Update form action to the selected category's upload URL
+      var opt = categorySelect.options[categorySelect.selectedIndex];
+      if (opt && opt.dataset.url) form.action = opt.dataset.url;
+      checkReady();
+    });
+
+    // Reset modal state on close
+    var modal = document.getElementById('uploadModal');
+    if (modal) modal.addEventListener('hidden.bs.modal', function() {
+      if (categorySelect) categorySelect.selectedIndex = 0;
+      clearFile();
+      form.action = '';
+    });
+  })();
+  </script>
 
   {# ════════════════════════════════════════ TAB 2: Extracted Data ════ #}
   <div class="tab-pane fade" id="tab-data">
@@ -1148,8 +1283,9 @@
         })
         .then(function(r) {
           if (r.ok) {
-            statusEl.textContent = '\u2713 Done \u2014 reload to see results';
+            statusEl.textContent = '\u2713 Done \u2014 reloading\u2026';
             statusEl.className = 'parser-status success';
+            setTimeout(function() { window.location.reload(); }, 800);
           } else {
             statusEl.textContent = 'Error (HTTP ' + r.status + ')';
             statusEl.className = 'parser-status error';

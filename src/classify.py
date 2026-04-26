@@ -22,6 +22,13 @@ FORM_1098_T_PATTERNS = [r"1098-t\b", r"1098\s*-?\s*t\b", r"tuition\s+statement",
 FORM_1099_Q_PATTERNS = [r"1099-q\b", r"1099\s*-?\s*q\b", r"qualified\s+education\s+program", r"section\s+529", r"coverdell\s+esa", r"529\s+plan"]
 FORM_1099_SA_PATTERNS = [r"1099-sa\b", r"1099\s*-?\s*sa\b", r"distributions?\s+from\s+(?:an?\s+)?hsa", r"health\s+savings\s+account", r"archer\s+msa", r"medicare\s+advantage\s+msa"]
 PRIOR_YEAR_RETURN_PATTERNS = [r"\bform\s*1040\b", r"\b1040\b", r"adjusted\s+gross\s+income", r"taxable\s+income", r"total\s+tax", r"federal\s+tax\s+return"]
+SSA_1099_PATTERNS = [
+    r"\bssa[-\s]?1099\b",
+    r"social\s+security\s+benefit\s+statement",
+    r"social\s+security\s+administration",
+    r"net\s+(?:social\s+security\s+)?benefits?",
+    r"benefits?\s+paid.*benefits?\s+repaid",
+]
 
 
 def _score(patterns: list[str], haystack: str) -> float:
@@ -91,6 +98,7 @@ def classify_document(file_path: Path, text: str) -> tuple[str, float, int | Non
         "form_1099_q": _score(FORM_1099_Q_PATTERNS, haystack),
         "form_1099_sa": _score(FORM_1099_SA_PATTERNS, haystack),
         "prior_year_return": _score(PRIOR_YEAR_RETURN_PATTERNS, haystack),
+        "ssa_1099": _score(SSA_1099_PATTERNS, haystack),
     }
 
     doc_type, confidence = max(scores.items(), key=lambda kv: kv[1])

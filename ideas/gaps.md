@@ -17,7 +17,7 @@ Forms that clients receive and bring to their preparer — need extraction suppo
 | ~~**1098-T**~~ | ~~Tuition / education credits (AOTC, Lifetime Learning)~~ | ~~Medium~~ — **Completed April 2026** |
 | ~~**1099-Q**~~ | ~~Qualified education program (529) distributions~~ | ~~Low~~ — **Completed April 2026** |
 | ~~**1099-SA**~~ | ~~HSA / MSA distributions~~ | ~~Low~~ — **Completed April 2026** |
-| **SSA-1099** | Social Security benefits | High |
+| ~~**SSA-1099**~~ | ~~Social Security benefits~~ | ~~High~~ — **Completed April 2026** |
 
 **Notes:**
 - 1099-NEC extractor completed April 2026 — serves as template for remaining forms.

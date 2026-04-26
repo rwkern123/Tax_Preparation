@@ -106,7 +106,47 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
         lines.append("1. No 1099-R detected. Ask whether client received any retirement, pension, IRA, or annuity distributions.")
     lines.append("")
 
-    lines += ["## G) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]
+    lines += ["## G) Social Security Benefits (SSA-1099)"]
+    if data.ssa_1099:
+        for i, ssa in enumerate(data.ssa_1099, 1):
+            withheld_part = f", Box 6 Fed Withheld={_fmt_money(ssa.box6_voluntary_tax_withheld)}" if ssa.box6_voluntary_tax_withheld else ""
+            lines.append(
+                f"{i}. Enter SSA-1099 for {ssa.beneficiary_name or 'Unknown Beneficiary'}: "
+                f"Box 5 Net Benefits={_fmt_money(ssa.box5_net_benefits)}"
+                f"{withheld_part} → Form 1040 Line 6a."
+            )
+            if ssa.box5_is_negative:
+                lines.append(
+                    "   - Box 5 is NEGATIVE (repayments exceeded gross benefits). "
+                    "None of this year's benefits are taxable; see Pub. 915 'Repayments More Than Gross Benefits'."
+                )
+            if ssa.lump_sum_prior_years and ssa.lump_sum_prior_years > 0:
+                lines.append(
+                    f"   - LUMP-SUM: Box 3 includes {_fmt_money(ssa.lump_sum_prior_years)} paid in {ssa.year} for earlier years. "
+                    f"Consider lump-sum election method (check box on Form 1040 Line 6c and complete Worksheet 2/Pub. 915)."
+                )
+            if ssa.box4_benefits_repaid and ssa.box4_benefits_repaid > 0:
+                lines.append(
+                    f"   - Benefits repaid to SSA (Box 4)={_fmt_money(ssa.box4_benefits_repaid)}. "
+                    f"If repayments exceed $3,000, evaluate Sec. 1341 claim-of-right deduction."
+                )
+            if ssa.medicare_premiums:
+                lines.append(
+                    f"   - Medicare premiums deducted from benefits={_fmt_money(ssa.medicare_premiums)}. "
+                    f"Include in Schedule A medical expenses if itemizing (not subtracted from Box 5)."
+                )
+            if ssa.attorney_fees_withheld:
+                lines.append(
+                    f"   - Attorney fees withheld from benefits={_fmt_money(ssa.attorney_fees_withheld)}. "
+                    f"Included in Box 3; do not subtract from Box 5."
+                )
+            if ssa.is_corrected:
+                lines.append("   - NOTE: This is a CORRECTED SSA-1099. Verify against original.")
+    else:
+        lines.append("1. No SSA-1099 detected. Ask whether client (or spouse) received Social Security benefits.")
+    lines.append("")
+
+    lines += ["## H) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]
     if data.form_1098:
         for idx, form in enumerate(data.form_1098, 2):
             lines.append(
@@ -122,11 +162,11 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
     lines.append("")
 
     lines += [
-        "## H) Review & diagnostics",
+        "## I) Review & diagnostics",
         "1. Reconcile total W-2 wages and withholding against source forms.",
         "2. Assess withholding reasonableness and compare with prior-year fields if available.",
         "",
-        "## I) E-file/admin (placeholder)",
+        "## J) E-file/admin (placeholder)",
         "1. Run final diagnostics and complete e-file authorization workflow.",
     ]
 

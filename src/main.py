@@ -27,6 +27,7 @@ from src.extract.form_1099_misc import parse_1099_misc_text
 from src.extract.form_1098_t import parse_1098_t_text
 from src.extract.form_1099_q import parse_1099_q_text
 from src.extract.form_1099_sa import parse_1099_sa_text
+from src.extract.ssa_1099 import parse_ssa_1099_text
 from src.extract.azure_1099_g import AZURE_CONFIDENCE_THRESHOLD as _1099g_AZURE_THRESH, parse_1099_g_azure
 from src.extract.azure_1099_misc import AZURE_CONFIDENCE_THRESHOLD as _1099misc_AZURE_THRESH, parse_1099_misc_azure
 from src.extract.azure_1098_t import AZURE_CONFIDENCE_THRESHOLD as _1098t_AZURE_THRESH, parse_1098_t_azure
@@ -369,6 +370,11 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
                 extraction.form_1099_sa.append(parsed)
                 key_fields = asdict(parsed)
                 issuer = parsed.payer_name
+            elif doc_type == "ssa_1099":
+                parsed = parse_ssa_1099_text(text)
+                extraction.ssa_1099.append(parsed)
+                key_fields = asdict(parsed)
+                issuer = "Social Security Administration"
             else:
                 extraction.unknown.append({"file_name": path.name, "reason": "Unclassified"})
 

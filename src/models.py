@@ -447,6 +447,32 @@ class Form1099SAData:
 
 
 @dataclass
+class FormSSA1099Data:
+    """SSA-1099: Social Security Benefit Statement (Pub. 915 Appendix)."""
+    # Box 1 / Box 2
+    beneficiary_name: Optional[str] = None
+    beneficiary_ssn: Optional[str] = None           # Box 2
+    year: Optional[int] = None
+    # Core boxes
+    box3_benefits_paid: Optional[float] = None       # Box 3 — gross benefits paid
+    box4_benefits_repaid: Optional[float] = None     # Box 4 — repaid to SSA
+    box5_net_benefits: Optional[float] = None        # Box 5 — net (→ Form 1040 Line 6a)
+    box5_is_negative: bool = False                   # True when Box 5 in parentheses (repaid > gross)
+    box6_voluntary_tax_withheld: Optional[float] = None  # Box 6
+    box8_claim_number: Optional[str] = None          # Box 8 — SSA claim number
+    # Description of Amount in Box 3 sub-items
+    box3_paid_by_check: Optional[float] = None       # "Paid by check or direct deposit"
+    medicare_premiums: Optional[float] = None        # Medicare premiums deducted (Part B/C/D combined)
+    attorney_fees_withheld: Optional[float] = None   # Attorney fees withheld from benefits
+    # Lump-sum prior-year benefit included in Box 3 (asterisk indicator)
+    lump_sum_prior_years: Optional[float] = None     # Amount in Box 3 for years before current year
+    box3_description: Optional[str] = None           # Full narrative description text
+    is_corrected: bool = False
+    confidence: float = 0.0
+    extraction_source: str = "local"
+
+
+@dataclass
 class ExtractionResult:
     w2: List[W2Data] = field(default_factory=list)
     brokerage_1099: List[Brokerage1099Data] = field(default_factory=list)
@@ -459,6 +485,7 @@ class ExtractionResult:
     form_1098_t: List[Form1098TData] = field(default_factory=list)
     form_1099_q: List[Form1099QData] = field(default_factory=list)
     form_1099_sa: List[Form1099SAData] = field(default_factory=list)
+    ssa_1099: List[FormSSA1099Data] = field(default_factory=list)
     unknown: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -474,5 +501,6 @@ class ExtractionResult:
             "form_1098_t": [asdict(item) for item in self.form_1098_t],
             "form_1099_q": [asdict(item) for item in self.form_1099_q],
             "form_1099_sa": [asdict(item) for item in self.form_1099_sa],
+            "ssa_1099": [asdict(item) for item in self.ssa_1099],
             "unknown": self.unknown,
         }

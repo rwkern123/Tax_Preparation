@@ -82,7 +82,52 @@ def generate_questions(client: str, data: ExtractionResult) -> str:
                 f"Were estimated payments made to cover the tax due on this distribution?"
             )
 
-    if not data.form_1099_nec and not data.w2:
+    for sc in data.schedule_c:
+        biz = sc.line_c_business_name or sc.line_a_principal_business or "your business"
+        if sc.line_i_made_payments_requiring_1099 and sc.line_j_filed_required_1099 is False:
+            q.append(
+                f"- For {biz}: you indicated you made payments requiring 1099s but did NOT file them. "
+                f"Please collect outstanding W-9s and prepare any unfiled 1099-NECs/1099-MISCs before we file."
+            )
+        if sc.line_30_home_office and sc.line_30_home_office > 0 and not sc.line_30_simplified_method_business_sqft:
+            q.append(
+                f"- For {biz}: home office deduction reported (line 30 = {_fmt_money(sc.line_30_home_office)}). "
+                f"Are you using the simplified method or actual expenses (Form 8829)? "
+                f"If actual, please confirm direct/indirect expense allocations and depreciation basis."
+            )
+        if sc.line_9_car_truck and sc.line_9_car_truck > 0 and sc.line_44a_business_miles is None:
+            q.append(
+                f"- For {biz}: car/truck expenses reported (line 9 = {_fmt_money(sc.line_9_car_truck)}) "
+                f"but Part IV vehicle mileage is missing. Please provide business/commuting/other miles for the year."
+            )
+        if sc.line_47a_evidence_to_support is False:
+            q.append(
+                f"- For {biz}: line 47a indicates no documentation supporting the vehicle deduction. "
+                f"This is high audit risk — can you produce a mileage log or other contemporaneous evidence?"
+            )
+        if sc.line_31_net_profit_loss is not None and sc.line_31_net_profit_loss < 0:
+            q.append(
+                f"- For {biz}: a loss of {_fmt_money(sc.line_31_net_profit_loss)} was reported. "
+                f"Confirm at-risk basis (line 32a vs 32b) and whether you materially participated. "
+                f"Repeated losses may attract IRS hobby-loss scrutiny under §183."
+            )
+        if sc.line_24b_meals and sc.line_22_supplies and sc.line_24b_meals > sc.line_22_supplies * 2:
+            q.append(
+                f"- For {biz}: deductible meals (line 24b) appear large relative to supplies. "
+                f"Confirm meals are with clients/employees, not personal, and 50% limit was applied."
+            )
+        if sc.line_g_material_participation is False:
+            q.append(
+                f"- For {biz}: line G indicates you did NOT materially participate. "
+                f"Losses may be limited as passive activity (Form 8582). Was this intended?"
+            )
+        if sc.line_h_started_or_acquired:
+            q.append(
+                f"- For {biz}: line H indicates the business started or was acquired this year. "
+                f"Did you incur start-up costs >$5,000 (§195) or organizational costs (§248) that should be amortized?"
+            )
+
+    if not data.form_1099_nec and not data.w2 and not data.schedule_c:
         q.append("- No W-2 or 1099-NEC found. Did you have any wage or self-employment income this year?")
 
     if len(q) == 2:

@@ -80,7 +80,69 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
         lines.append("1. No 1099-NEC detected. Ask whether client received any freelance, contract, or gig income.")
     lines.append("")
 
-    lines += ["## F) 1099-R Retirement / Pension / IRA Distributions"]
+    lines += ["## F) Schedule C — Self-Employment Detail"]
+    if data.schedule_c:
+        for i, sc in enumerate(data.schedule_c, 1):
+            biz_label = sc.line_c_business_name or sc.line_a_principal_business or sc.proprietor_name or "Unknown business"
+            ein_part = f", EIN {sc.line_d_ein}" if sc.line_d_ein else ""
+            code_part = f", code {sc.line_b_business_code}" if sc.line_b_business_code else ""
+            method_part = f", {sc.line_f_accounting_method}-basis" if sc.line_f_accounting_method else ""
+            lines.append(
+                f"{i}. Schedule C — {biz_label}{ein_part}{code_part}{method_part}: "
+                f"Gross receipts (line 1)={_fmt_money(sc.line_1_gross_receipts)}, "
+                f"Total expenses (line 28)={_fmt_money(sc.line_28_total_expenses)}, "
+                f"Net profit/(loss) (line 31)={_fmt_money(sc.line_31_net_profit_loss)}."
+            )
+            if sc.line_4_cogs and sc.line_4_cogs > 0:
+                lines.append(
+                    f"   - COGS (line 4)={_fmt_money(sc.line_4_cogs)} — verify Part III inventory entries (lines 35, 41) and method on line 33."
+                )
+            if sc.line_13_depreciation_section_179 and sc.line_13_depreciation_section_179 > 0:
+                lines.append(
+                    f"   - Depreciation/§179 (line 13)={_fmt_money(sc.line_13_depreciation_section_179)} — confirm Form 4562 attached and asset detail reconciles."
+                )
+            if sc.line_30_home_office and sc.line_30_home_office > 0:
+                method = "simplified" if sc.line_30_simplified_method_business_sqft else "actual (Form 8829)"
+                lines.append(
+                    f"   - Home office (line 30)={_fmt_money(sc.line_30_home_office)} via {method} method — verify exclusive/regular-use test and square footage."
+                )
+            if sc.line_9_car_truck and sc.line_9_car_truck > 0:
+                miles_part = ""
+                if sc.line_44a_business_miles is not None:
+                    miles_part = f" ({sc.line_44a_business_miles:,.0f} business miles)"
+                lines.append(
+                    f"   - Car/truck (line 9)={_fmt_money(sc.line_9_car_truck)}{miles_part} — confirm method (standard mileage vs. actual) and Part IV evidence."
+                )
+            if sc.line_24b_meals and sc.line_24b_meals > 0:
+                lines.append(
+                    f"   - Deductible meals (line 24b)={_fmt_money(sc.line_24b_meals)} — verify 50% limit applied and business-purpose documentation exists."
+                )
+            if sc.line_31_net_profit_loss is not None and sc.line_31_net_profit_loss < 0:
+                if sc.line_32b_some_not_at_risk:
+                    lines.append(
+                        "   - LOSS with line 32b checked — Form 6198 at-risk limitation required; loss may be limited."
+                    )
+                elif sc.line_32a_all_at_risk:
+                    lines.append("   - LOSS with line 32a (all at-risk) — full loss flows to Schedule 1 line 3.")
+                else:
+                    lines.append("   - LOSS reported but at-risk box (line 32) not detected — confirm investment classification.")
+            if sc.line_g_material_participation is False:
+                lines.append("   - Line G = NO (no material participation) — passive activity loss rules apply; consider Form 8582.")
+            if sc.line_i_made_payments_requiring_1099 and not sc.line_j_filed_required_1099:
+                lines.append(
+                    "   - Line I = Yes but Line J = No — required 1099s have NOT been filed. Address before signing."
+                )
+            if sc.line_h_started_or_acquired:
+                lines.append("   - Line H checked — business started/acquired this year. Confirm start-up expense election (§195).")
+            if sc.line_31_net_profit_loss and sc.line_31_net_profit_loss > 400:
+                lines.append(
+                    f"   - Net SE earnings >$400 — Schedule SE required. Compute SE tax on net of {_fmt_money(sc.line_31_net_profit_loss)} × 92.35%."
+                )
+    else:
+        lines.append("1. No Schedule C detected. If 1099-NEC/MISC self-employment income exists above, prepare Schedule C.")
+    lines.append("")
+
+    lines += ["## G) 1099-R Retirement / Pension / IRA Distributions"]
     if data.form_1099_r:
         for i, r in enumerate(data.form_1099_r, 1):
             code_part = f", Code={r.box7_distribution_code}" if r.box7_distribution_code else ""
@@ -106,7 +168,7 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
         lines.append("1. No 1099-R detected. Ask whether client received any retirement, pension, IRA, or annuity distributions.")
     lines.append("")
 
-    lines += ["## G) Social Security Benefits (SSA-1099)"]
+    lines += ["## H) Social Security Benefits (SSA-1099)"]
     if data.ssa_1099:
         for i, ssa in enumerate(data.ssa_1099, 1):
             withheld_part = f", Box 6 Fed Withheld={_fmt_money(ssa.box6_voluntary_tax_withheld)}" if ssa.box6_voluntary_tax_withheld else ""
@@ -146,7 +208,7 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
         lines.append("1. No SSA-1099 detected. Ask whether client (or spouse) received Social Security benefits.")
     lines.append("")
 
-    lines += ["## H) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]
+    lines += ["## I) Deductions/credits prompts", "1. Confirm standard vs. itemized deduction."]
     if data.form_1098:
         for idx, form in enumerate(data.form_1098, 2):
             lines.append(
@@ -162,11 +224,11 @@ def generate_checklist(client: str, data: ExtractionResult) -> str:
     lines.append("")
 
     lines += [
-        "## I) Review & diagnostics",
+        "## J) Review & diagnostics",
         "1. Reconcile total W-2 wages and withholding against source forms.",
         "2. Assess withholding reasonableness and compare with prior-year fields if available.",
         "",
-        "## J) E-file/admin (placeholder)",
+        "## K) E-file/admin (placeholder)",
         "1. Run final diagnostics and complete e-file authorization workflow.",
     ]
 

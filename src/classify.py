@@ -29,6 +29,15 @@ SSA_1099_PATTERNS = [
     r"net\s+(?:social\s+security\s+)?benefits?",
     r"benefits?\s+paid.*benefits?\s+repaid",
 ]
+SCHEDULE_C_PATTERNS = [
+    r"schedule\s+c\b",
+    r"\(form\s+1040\)\s*[\s\S]{0,40}?profit\s+or\s+loss\s+from\s+business",
+    r"profit\s+or\s+loss\s+from\s+business",
+    r"sole\s+proprietorship",
+    r"principal\s+business\s+or\s+profession",
+    r"gross\s+receipts\s+or\s+sales",
+    r"materially\s+participate",
+]
 
 
 def _score(patterns: list[str], haystack: str) -> float:
@@ -99,6 +108,7 @@ def classify_document(file_path: Path, text: str) -> tuple[str, float, int | Non
         "form_1099_sa": _score(FORM_1099_SA_PATTERNS, haystack),
         "prior_year_return": _score(PRIOR_YEAR_RETURN_PATTERNS, haystack),
         "ssa_1099": _score(SSA_1099_PATTERNS, haystack),
+        "schedule_c": _score(SCHEDULE_C_PATTERNS, haystack),
     }
 
     doc_type, confidence = max(scores.items(), key=lambda kv: kv[1])

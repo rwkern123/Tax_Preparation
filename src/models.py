@@ -473,6 +473,104 @@ class FormSSA1099Data:
 
 
 @dataclass
+class ScheduleCData:
+    """Schedule C (Form 1040): Profit or Loss From Business (Sole Proprietorship).
+
+    Captures every line item on the 2-page form so a return prepared by a prior
+    preparer can be read back into the workflow. One ScheduleCData instance per
+    business (a return may have multiple).
+    """
+    # Header
+    proprietor_name: Optional[str] = None
+    proprietor_ssn: Optional[str] = None
+    line_a_principal_business: Optional[str] = None        # principal business or profession
+    line_b_business_code: Optional[str] = None             # 6-digit NAICS-like code
+    line_c_business_name: Optional[str] = None             # blank if same as proprietor
+    line_d_ein: Optional[str] = None
+    line_e_business_address: Optional[str] = None
+    line_e_city_state_zip: Optional[str] = None
+    line_f_accounting_method: Optional[str] = None         # "cash" | "accrual" | "other"
+    line_g_material_participation: Optional[bool] = None   # G — Y/N
+    line_h_started_or_acquired: bool = False               # H — checkbox if started in tax year
+    line_i_made_payments_requiring_1099: Optional[bool] = None  # I — Y/N
+    line_j_filed_required_1099: Optional[bool] = None      # J — Y/N (only if I=Yes)
+    year: Optional[int] = None
+
+    # Part I — Income
+    line_1_gross_receipts: Optional[float] = None
+    line_1_statutory_employee: bool = False                # checkbox on line 1
+    line_2_returns_allowances: Optional[float] = None
+    line_3_net_receipts: Optional[float] = None            # line 1 - line 2
+    line_4_cogs: Optional[float] = None                    # from Part III line 42
+    line_5_gross_profit: Optional[float] = None            # line 3 - line 4
+    line_6_other_income: Optional[float] = None
+    line_7_gross_income: Optional[float] = None            # line 5 + line 6
+
+    # Part II — Expenses
+    line_8_advertising: Optional[float] = None
+    line_9_car_truck: Optional[float] = None
+    line_10_commissions_fees: Optional[float] = None
+    line_11_contract_labor: Optional[float] = None
+    line_12_depletion: Optional[float] = None
+    line_13_depreciation_section_179: Optional[float] = None
+    line_14_employee_benefit_programs: Optional[float] = None
+    line_15_insurance: Optional[float] = None
+    line_16a_mortgage_interest: Optional[float] = None
+    line_16b_other_interest: Optional[float] = None
+    line_17_legal_professional: Optional[float] = None
+    line_18_office_expense: Optional[float] = None
+    line_19_pension_profit_sharing: Optional[float] = None
+    line_20a_rent_vehicles_machinery: Optional[float] = None
+    line_20b_rent_other_property: Optional[float] = None
+    line_21_repairs_maintenance: Optional[float] = None
+    line_22_supplies: Optional[float] = None
+    line_23_taxes_licenses: Optional[float] = None
+    line_24a_travel: Optional[float] = None
+    line_24b_meals: Optional[float] = None                 # deductible portion only
+    line_25_utilities: Optional[float] = None
+    line_26_wages: Optional[float] = None
+    line_27a_energy_efficient_bldg: Optional[float] = None # Form 7205
+    line_27b_other_expenses: Optional[float] = None        # from Part V line 48
+    line_28_total_expenses: Optional[float] = None
+    line_29_tentative_profit_loss: Optional[float] = None  # line 7 - line 28
+    line_30_home_office: Optional[float] = None
+    line_30_simplified_method_total_sqft: Optional[float] = None
+    line_30_simplified_method_business_sqft: Optional[float] = None
+    line_31_net_profit_loss: Optional[float] = None        # line 29 - line 30 → Sch 1 line 3
+    line_32a_all_at_risk: bool = False
+    line_32b_some_not_at_risk: bool = False                # if checked, attach Form 6198
+
+    # Part III — Cost of Goods Sold (only present when line 4 > 0)
+    line_33_inventory_method: Optional[str] = None         # "cost" | "lcm" | "other"
+    line_34_inventory_method_change: Optional[bool] = None
+    line_35_inventory_beginning: Optional[float] = None
+    line_36_purchases: Optional[float] = None
+    line_37_cost_of_labor: Optional[float] = None
+    line_38_materials_supplies: Optional[float] = None
+    line_39_other_costs: Optional[float] = None
+    line_40_total_inputs: Optional[float] = None           # sum 35–39
+    line_41_inventory_end: Optional[float] = None
+    line_42_cogs: Optional[float] = None                   # line 40 - line 41
+
+    # Part IV — Vehicle (only when claiming line 9 without Form 4562)
+    line_43_date_placed_in_service: Optional[str] = None
+    line_44a_business_miles: Optional[float] = None
+    line_44b_commuting_miles: Optional[float] = None
+    line_44c_other_miles: Optional[float] = None
+    line_45_personal_use_offduty: Optional[bool] = None
+    line_46_another_vehicle_personal: Optional[bool] = None
+    line_47a_evidence_to_support: Optional[bool] = None
+    line_47b_evidence_written: Optional[bool] = None
+
+    # Part V — Other expenses (free-form list summing to line 27b)
+    other_expenses_items: List[Dict] = field(default_factory=list)  # [{description, amount}]
+    line_48_total_other_expenses: Optional[float] = None
+
+    confidence: float = 0.0
+    extraction_source: str = "local"  # "local" | "azure"
+
+
+@dataclass
 class ExtractionResult:
     w2: List[W2Data] = field(default_factory=list)
     brokerage_1099: List[Brokerage1099Data] = field(default_factory=list)
@@ -486,6 +584,7 @@ class ExtractionResult:
     form_1099_q: List[Form1099QData] = field(default_factory=list)
     form_1099_sa: List[Form1099SAData] = field(default_factory=list)
     ssa_1099: List[FormSSA1099Data] = field(default_factory=list)
+    schedule_c: List[ScheduleCData] = field(default_factory=list)
     unknown: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -502,5 +601,6 @@ class ExtractionResult:
             "form_1099_q": [asdict(item) for item in self.form_1099_q],
             "form_1099_sa": [asdict(item) for item in self.form_1099_sa],
             "ssa_1099": [asdict(item) for item in self.ssa_1099],
+            "schedule_c": [asdict(item) for item in self.schedule_c],
             "unknown": self.unknown,
         }

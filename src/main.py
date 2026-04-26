@@ -28,6 +28,8 @@ from src.extract.form_1098_t import parse_1098_t_text
 from src.extract.form_1099_q import parse_1099_q_text
 from src.extract.form_1099_sa import parse_1099_sa_text
 from src.extract.ssa_1099 import parse_ssa_1099_text
+from src.extract.schedule_c import parse_schedule_c_text
+from src.extract.azure_schedule_c import AZURE_CONFIDENCE_THRESHOLD as _sched_c_AZURE_THRESH, parse_schedule_c_azure
 from src.extract.azure_1099_g import AZURE_CONFIDENCE_THRESHOLD as _1099g_AZURE_THRESH, parse_1099_g_azure
 from src.extract.azure_1099_misc import AZURE_CONFIDENCE_THRESHOLD as _1099misc_AZURE_THRESH, parse_1099_misc_azure
 from src.extract.azure_1098_t import AZURE_CONFIDENCE_THRESHOLD as _1098t_AZURE_THRESH, parse_1098_t_azure
@@ -375,6 +377,28 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
                 extraction.ssa_1099.append(parsed)
                 key_fields = asdict(parsed)
                 issuer = "Social Security Administration"
+            elif doc_type == "schedule_c":
+                parsed = parse_schedule_c_text(text)
+                if (
+                    config.enable_azure
+                    and parsed.confidence < _sched_c_AZURE_THRESH
+                    and config.azure_endpoint
+                    and config.azure_api_key
+                ):
+                    local_conf = parsed.confidence
+                    azure_parsed = parse_schedule_c_azure(path, config.azure_endpoint, config.azure_api_key)
+                    if azure_parsed is not None and azure_parsed.confidence >= local_conf:
+                        parsed = azure_parsed
+                        notes.append(f"azure:used:local_confidence_was:{local_conf:.2f}")
+                    else:
+                        notes.append(
+                            f"azure:{'unavailable' if azure_parsed is None else 'skipped_lower_confidence'}:local_confidence:{local_conf:.2f}"
+                        )
+                elif config.enable_azure and parsed.confidence >= _sched_c_AZURE_THRESH:
+                    notes.append(f"azure:skipped:high_local_confidence:{parsed.confidence:.2f}")
+                extraction.schedule_c.append(parsed)
+                key_fields = asdict(parsed)
+                issuer = parsed.line_c_business_name or parsed.proprietor_name
             else:
                 extraction.unknown.append({"file_name": path.name, "reason": "Unclassified"})
 

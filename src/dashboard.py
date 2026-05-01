@@ -6,6 +6,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# Module-level mtime cache: key=(str_path, mtime) -> parsed result
+_file_cache: dict[tuple, Any] = {}
+
+
+def _read_cached(path: Path, loader):
+    """Return loader(path) cached by (absolute_path, mtime). Returns None if file missing."""
+    if not path.exists():
+        return None
+    key = (str(path.resolve()), path.stat().st_mtime)
+    if key not in _file_cache:
+        _file_cache[key] = loader(path)
+    return _file_cache[key]
+
 
 @dataclass
 class ClientSummary:
@@ -20,9 +33,7 @@ class ClientSummary:
     extraction_counts: dict[str, int] = field(default_factory=dict)
 
 
-def parse_questions_markdown(path: Path) -> list[str]:
-    if not path.exists():
-        return []
+def _parse_questions(path: Path) -> list[str]:
     tasks: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -31,22 +42,27 @@ def parse_questions_markdown(path: Path) -> list[str]:
     return tasks
 
 
-def load_document_index(path: Path) -> dict[str, Any]:
-    info = {"document_count": 0, "unknown_count": 0, "error_count": 0}
-    if not path.exists():
-        return info
+def parse_questions_markdown(path: Path) -> list[str]:
+    result = _read_cached(path, _parse_questions)
+    return result if result is not None else []
+
+
+def _parse_index(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-    info["document_count"] = len(rows)
-    info["unknown_count"] = sum(1 for r in rows if r.get("doc_type") == "unknown")
-    info["error_count"] = sum(1 for r in rows if r.get("doc_type") == "error")
-    return info
+        rows = list(csv.DictReader(f))
+    return {
+        "document_count": len(rows),
+        "unknown_count": sum(1 for r in rows if r.get("doc_type") == "unknown"),
+        "error_count": sum(1 for r in rows if r.get("doc_type") == "error"),
+    }
 
 
-def load_extract_counts(path: Path) -> dict[str, int]:
-    if not path.exists():
-        return {}
+def load_document_index(path: Path) -> dict[str, Any]:
+    result = _read_cached(path, _parse_index)
+    return result if result is not None else {"document_count": 0, "unknown_count": 0, "error_count": 0}
+
+
+def _parse_extract_counts(path: Path) -> dict[str, int]:
     data = json.loads(path.read_text(encoding="utf-8"))
     counts: dict[str, int] = {}
     for key in ["w2", "brokerage_1099", "form_1098", "unknown"]:
@@ -54,6 +70,30 @@ def load_extract_counts(path: Path) -> dict[str, int]:
         if isinstance(val, list):
             counts[key] = len(val)
     return counts
+
+
+def load_extract_counts(path: Path) -> dict[str, int]:
+    result = _read_cached(path, _parse_extract_counts)
+    return result if result is not None else {}
+
+
+def _parse_document_records(path: Path) -> list[dict[str, Any]]:
+    """Load Document_Index.csv with key_fields column parsed from JSON string to dict."""
+    records = []
+    with path.open("r", encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            try:
+                row["key_fields"] = json.loads(row.get("key_fields") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                row["key_fields"] = {}
+            records.append(dict(row))
+    return records
+
+
+def load_document_records(path: Path) -> list[dict[str, Any]]:
+    """Return per-document rows from Document_Index.csv with key_fields as parsed dicts."""
+    result = _read_cached(path, _parse_document_records)
+    return result if result is not None else []
 
 
 def build_client_summary(client_dir: Path) -> ClientSummary:

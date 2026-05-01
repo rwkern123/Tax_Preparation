@@ -670,6 +670,11 @@ def import_clients():
 @preparer_bp.route("/client/<int:user_id>/manual-entry/<int:year>", methods=["POST"])
 @login_required
 def save_manual_entry_route(user_id: int, year: int):
+    import secrets
+    from pathlib import Path as _Path
+    from werkzeug.utils import secure_filename
+    from portal.database import save_upload
+
     name = request.form.get("name", "").strip()
     category = request.form.get("category", "charitable_cash")
     try:
@@ -681,6 +686,30 @@ def save_manual_entry_route(user_id: int, year: int):
         flash(f"Entry '{name}' saved.", "success")
     else:
         flash("Name and a positive amount are required.", "error")
+        return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
+
+    # Optional file upload attached to the same submission
+    file = request.files.get("file")
+    if file and file.filename:
+        allowed = current_app.config.get("ALLOWED_EXTENSIONS", set())
+        if _Path(file.filename).suffix.lower() in allowed:
+            upload_folder = current_app.config["UPLOAD_FOLDER"]
+            dest_dir = _Path(upload_folder) / str(user_id) / str(year) / "Charitable_Records"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            original_name = file.filename
+            stored_name = f"{secrets.token_hex(4)}_{secure_filename(original_name)}"
+            file.save(str(dest_dir / stored_name))
+            save_upload(
+                db_path=_portal_db(),
+                user_id=user_id,
+                tax_year=year,
+                category="Charitable_Records",
+                filename=stored_name,
+                original_name=original_name,
+            )
+        else:
+            flash("File type not allowed; entry was saved without the file.", "warning")
+
     return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
 
 

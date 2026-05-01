@@ -109,13 +109,15 @@ _INDEX_TEMPLATE = """
   th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
   th { background-color: #f7f7f7; }
   .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef; margin-right:6px; }
+  .tbl-link { font-size: 0.85em; white-space: nowrap; }
+  .dash { color: #aaa; }
 </style></head>
 <body>
   <h1>Tax Workpaper Dashboard</h1>
   <p>Root: {{ root }}</p>
   <table>
     <tr>
-      <th>Client</th><th>Docs</th><th>Tasks</th><th>Unknown</th><th>Errors</th><th>Extract Summary</th>
+      <th>Client</th><th>Docs</th><th>Tasks</th><th>Unknown</th><th>Errors</th><th>Extract Summary</th><th>Export</th><th>Overrides</th>
     </tr>
     {% for c in clients %}
     <tr>
@@ -129,6 +131,16 @@ _INDEX_TEMPLATE = """
         <span class="pill">{{ k }}: {{ v }}</span>
         {% endfor %}
       </td>
+      <td>
+        {% if c.has_outputs and c.document_count %}
+        <a class="tbl-link" href="/client/{{ c.client }}/export.csv">↓ CSV</a>
+        {% else %}<span class="dash">—</span>{% endif %}
+      </td>
+      <td>
+        {% if c.has_outputs and c.document_count %}
+        <a class="tbl-link" href="/client/{{ c.client }}#overrides">Edit</a>
+        {% else %}<span class="dash">—</span>{% endif %}
+      </td>
     </tr>
     {% endfor %}
   </table>
@@ -140,7 +152,7 @@ _CLIENT_TEMPLATE = """
 <html><head><title>{{ summary.client }} - Dashboard</title>
 <style>
   body { font-family: Arial, sans-serif; margin: 24px; max-width: 960px; }
-  h2 { border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; }
+  h2 { border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 32px; margin-bottom: 8px; }
   .meta { color: #666; font-size: 0.9em; }
   .doc-card { border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 20px; background: #fafafa; }
   .doc-card h3 { margin: 0 0 6px; font-size: 1em; }
@@ -153,8 +165,9 @@ _CLIENT_TEMPLATE = """
   .field-row .orig { font-size: 0.75em; color: #888; }
   .notes-row { margin-top: 10px; }
   .notes-row textarea { width: 100%; min-height: 60px; font-size: 0.85em; box-sizing: border-box; }
-  .actions { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
-  .btn { padding: 8px 18px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.95em; text-decoration: none; }
+  .section-header { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 1px solid #ddd; margin-top: 32px; padding-bottom: 4px; }
+  .section-header h2 { margin: 0; border: none; padding: 0; }
+  .btn { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; text-decoration: none; }
   .btn-primary { background: #3a5bcc; color: #fff; }
   .btn-secondary { background: #eee; color: #333; }
   .btn:hover { opacity: 0.85; }
@@ -169,10 +182,6 @@ _CLIENT_TEMPLATE = """
   <div class="flash">{{ flash }}</div>
   {% endif %}
 
-  <div class="actions">
-    <a class="btn btn-secondary" href="/client/{{ summary.client }}/export.csv">Download CSV Export</a>
-  </div>
-
   <h2>Follow-up / Review Tasks</h2>
   {% if summary.tasks %}
   <ol>
@@ -184,7 +193,10 @@ _CLIENT_TEMPLATE = """
   <p>No follow-up tasks found. Generate workpapers first if needed.</p>
   {% endif %}
 
-  <h2>Documents &amp; Field Overrides</h2>
+  <div class="section-header" id="overrides">
+    <h2>Documents &amp; Field Overrides</h2>
+    {% if records %}<a class="btn btn-secondary" href="/client/{{ summary.client }}/export.csv">↓ Download CSV Export</a>{% endif %}
+  </div>
   {% if records %}
   <p class="meta">Edit any field below to override the extracted value. Empty fields revert to the extracted value. Add notes per document as needed.</p>
   <form method="post" action="/client/{{ summary.client }}/override">

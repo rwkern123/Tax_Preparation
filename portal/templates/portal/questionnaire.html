@@ -1,295 +1,194 @@
 {% extends "base.html" %}
 {% block title %}Questionnaire {{ year }} — Tax Portal{% endblock %}
 
-{% block content %}
-<div class="page-wrapper">
-    <div class="container">
-
-        <div class="page-header">
-            <div class="breadcrumb">
-                <a href="{{ url_for('portal.dashboard') }}">Dashboard</a> &rsaquo;
-                <a href="{{ url_for('portal.year_detail', year=year) }}">{{ year }}</a> &rsaquo;
-                Questionnaire
-            </div>
-            <h1>{{ year }} Tax Questionnaire</h1>
-            <p>Based on IRS Form 13614-C. Your answers determine which documents you need to provide.</p>
-        </div>
-
-        <!-- Progress -->
-        <div class="progress-container card card-sm">
-            <div class="progress-label">
-                <span>Section {{ section_idx + 1 }} of {{ total_sections }}: <strong>{{ section.title }}</strong></span>
-                <span>{{ ((section_idx + 1) / total_sections * 100) | int }}% complete</span>
-            </div>
-            <div class="progress-bar-track">
-                <div class="progress-bar-fill"
-                     style="width: {{ ((section_idx + 1) / total_sections * 100) | int }}%;"></div>
-            </div>
-            <div class="progress-steps">
-                {% for s in sections %}
-                {% set idx = loop.index0 %}
-                <span class="progress-step
-                    {% if idx < section_idx %}progress-step-done
-                    {% elif idx == section_idx %}progress-step-current
-                    {% else %}progress-step-todo{% endif %}">
-                    {{ loop.index }}. {{ s.title.replace('Section ' + loop.index|string + ': ', '') }}
-                </span>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!-- Question Form -->
-        <form method="post" action="{{ url_for('portal.questionnaire', year=year) }}" id="questionnaire-form">
-            <input type="hidden" name="section_idx" value="{{ section_idx }}">
-
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">{{ section.title }}</div>
-                </div>
-
-                {% for q in section.questions %}
-                {% set show_if = q.get('show_if') %}
-                <div class="question-block"
-                     id="qblock_{{ q.id }}"
-                     {% if show_if %}
-                     data-show-if-question="{{ show_if.question }}"
-                     data-show-if-value="{{ show_if.value }}"
-                     {% endif %}>
-
-                    {% if q.type == 'yes_no' %}
-                    <div class="question-label">{{ q.label }}</div>
-                    {% if q.get('hint') %}
-                    <div class="question-hint">{{ q.hint }}</div>
-                    {% endif %}
-                    <div class="yes-no-group">
-                        <input type="radio" id="{{ q.id }}_yes" name="{{ q.id }}" value="yes"
-                               {% if answers.get(q.id) == 'yes' %}checked{% endif %}>
-                        <label for="{{ q.id }}_yes" class="yes-no-label">YES</label>
-
-                        <input type="radio" id="{{ q.id }}_no" name="{{ q.id }}" value="no"
-                               {% if answers.get(q.id) == 'no' %}checked{% endif %}>
-                        <label for="{{ q.id }}_no" class="yes-no-label">NO</label>
-                    </div>
-
-                    {% elif q.type == 'dependents' %}
-                    <div class="question-label">{{ q.label }}</div>
-                    {% if q.get('hint') %}
-                    <div class="question-hint">{{ q.hint }}</div>
-                    {% endif %}
-
-                    <!-- Hidden input stores JSON -->
-                    <input type="hidden" name="{{ q.id }}_json" id="{{ q.id }}_json"
-                           value="{{ answers.get(q.id, []) | tojson }}">
-
-                    <div style="overflow-x:auto;">
-                        <table class="dependents-table" id="{{ q.id }}_table">
-                            <thead>
-                                <tr>
-                                    <th>First Name</th>
-                                    <th>Last Name</th>
-                                    <th>DOB</th>
-                                    <th>Relationship</th>
-                                    <th>Months in Home</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody id="{{ q.id }}_tbody">
-                                <!-- Rows injected by JS -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <button type="button" class="btn btn-secondary btn-sm mt-1"
-                            onclick="addDependentRow('{{ q.id }}')">+ Add Dependent</button>
-
-                    {% elif q.type in ('text', 'number') %}
-                    <div class="form-group">
-                        <label for="{{ q.id }}">{{ q.label }}</label>
-                        {% if q.get('hint') %}
-                        <div class="form-hint">{{ q.hint }}</div>
-                        {% endif %}
-                        <input type="{{ q.type }}" id="{{ q.id }}" name="{{ q.id }}"
-                               class="form-control" value="{{ answers.get(q.id, '') }}">
-                    </div>
-
-                    {% elif q.type == 'select' %}
-                    <div class="form-group">
-                        <label for="{{ q.id }}">{{ q.label }}</label>
-                        {% if q.get('hint') %}
-                        <div class="form-hint">{{ q.hint }}</div>
-                        {% endif %}
-                        <select id="{{ q.id }}" name="{{ q.id }}" class="form-control">
-                            <option value="">— Select —</option>
-                            {% for opt in q.get('options', []) %}
-                            <option value="{{ opt.value }}"
-                                    {% if answers.get(q.id) == opt.value %}selected{% endif %}>
-                                {{ opt.label }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            </div>
-
-            <!-- Navigation Buttons -->
-            <div class="flex-between mt-2 no-print">
-                <div>
-                    {% if section_idx > 0 %}
-                    <button type="submit" name="action" value="back" class="btn btn-secondary">
-                        &larr; Back
-                    </button>
-                    {% endif %}
-                </div>
-                <div class="flex" style="gap:10px;">
-                    <button type="submit" name="action" value="save" class="btn btn-secondary">
-                        Save Progress
-                    </button>
-                    {% if is_last %}
-                    <button type="submit" name="action" value="finish" class="btn btn-success">
-                        Finish &amp; View Checklist &#10003;
-                    </button>
-                    {% else %}
-                    <button type="submit" name="action" value="next" class="btn btn-primary">
-                        Save &amp; Continue &rarr;
-                    </button>
-                    {% endif %}
-                </div>
-            </div>
-        </form>
-
-    </div>
-</div>
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" crossorigin="anonymous">
+<style>.btn-xs { padding:.15rem .4rem; font-size:.75rem; line-height:1.4; }</style>
 {% endblock %}
 
-{% block scripts %}
+{% block content %}
+<div style="padding:28px 24px 60px">
+  <div style="max-width:800px; margin:0 auto">
+
+    <div class="d-flex align-items-center mb-4 gap-3">
+      <a href="{{ url_for('portal.year_detail', year=year) }}"
+         class="btn btn-outline-secondary btn-sm">&larr; Back</a>
+      <h4 class="fw-bold mb-0">
+        Questionnaire &mdash; TY {{ year }}
+        {% if questionnaire_complete %}
+          <span class="badge bg-success ms-1 fs-6">Complete</span>
+        {% else %}
+          <span class="badge bg-warning text-dark ms-1 fs-6">In Progress</span>
+        {% endif %}
+      </h4>
+    </div>
+
+    <form method="post"
+          action="{{ url_for('portal.questionnaire', year=year) }}"
+          id="q-form">
+
+      {% for section in sections %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-header fw-semibold">{{ section.title }}</div>
+        <div class="card-body">
+          {% for q in section.questions %}
+
+            {% if q.type == 'yes_no' %}
+            <div class="mb-3"
+                 {% if q.show_if is defined %}
+                 id="qblock_{{ q.id }}"
+                 data-show-if-question="{{ q.show_if.question }}"
+                 data-show-if-value="{{ q.show_if.value }}"
+                 {% endif %}>
+              <label class="form-label">{{ q.label }}</label>
+              {% if q.hint is defined %}<div class="text-muted small mb-1">{{ q.hint }}</div>{% endif %}
+              <div class="d-flex gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="{{ q.id }}"
+                         id="{{ q.id }}_yes" value="yes"
+                         {% if answers.get(q.id) == 'yes' %}checked{% endif %}>
+                  <label class="form-check-label" for="{{ q.id }}_yes">Yes</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="{{ q.id }}"
+                         id="{{ q.id }}_no" value="no"
+                         {% if answers.get(q.id) == 'no' %}checked{% endif %}>
+                  <label class="form-check-label" for="{{ q.id }}_no">No</label>
+                </div>
+              </div>
+            </div>
+
+            {% elif q.type == 'dependents' %}
+            <div class="mb-3">
+              <label class="form-label">{{ q.label }}</label>
+              {% if q.hint is defined %}<div class="text-muted small mb-1">{{ q.hint }}</div>{% endif %}
+              <div id="{{ q.id }}_list" class="mb-2">
+                {% set deps = answers.get(q.id, []) %}
+                {% for dep in deps %}
+                <div class="d-flex gap-2 mb-1 dependent-row">
+                  <input type="text" class="form-control form-control-sm dep-name" placeholder="Name"
+                         value="{{ dep.get('name', dep.get('first_name','') + (' ' + dep.get('last_name','') if dep.get('last_name') else '')) }}">
+                  <input type="text" class="form-control form-control-sm dep-rel" placeholder="Relationship"
+                         style="width:140px" value="{{ dep.get('relationship','') }}">
+                  <input type="text" class="form-control form-control-sm dep-dob" placeholder="DOB"
+                         style="width:110px" value="{{ dep.get('dob','') }}">
+                  <button type="button" class="btn btn-xs btn-outline-danger"
+                          onclick="this.closest('.dependent-row').remove(); updateDepsJson('{{ q.id }}');">&times;</button>
+                </div>
+                {% endfor %}
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      onclick="addDependent('{{ q.id }}')">+ Add Dependent</button>
+              <input type="hidden" name="{{ q.id }}_json" id="{{ q.id }}_json"
+                     value="{{ answers.get(q.id, []) | tojson }}">
+            </div>
+
+            {% elif q.type in ('text', 'number') %}
+            <div class="mb-3"
+                 {% if q.show_if is defined %}
+                 id="qblock_{{ q.id }}"
+                 data-show-if-question="{{ q.show_if.question }}"
+                 data-show-if-value="{{ q.show_if.value }}"
+                 {% endif %}>
+              <label class="form-label" for="{{ q.id }}">{{ q.label }}</label>
+              {% if q.hint is defined %}<div class="text-muted small mb-1">{{ q.hint }}</div>{% endif %}
+              <input type="{{ q.type }}" class="form-control" id="{{ q.id }}" name="{{ q.id }}"
+                     value="{{ answers.get(q.id, '') }}" style="max-width:300px">
+            </div>
+
+            {% elif q.type == 'select' %}
+            <div class="mb-3"
+                 {% if q.show_if is defined %}
+                 id="qblock_{{ q.id }}"
+                 data-show-if-question="{{ q.show_if.question }}"
+                 data-show-if-value="{{ q.show_if.value }}"
+                 {% endif %}>
+              <label class="form-label" for="{{ q.id }}">{{ q.label }}</label>
+              {% if q.hint is defined %}<div class="text-muted small mb-1">{{ q.hint }}</div>{% endif %}
+              <select class="form-select" id="{{ q.id }}" name="{{ q.id }}" style="max-width:300px">
+                <option value=""></option>
+                {% for opt in q.get('options', []) %}
+                <option value="{{ opt }}" {% if answers.get(q.id) == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
+
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+
+      <div class="d-flex gap-2 mb-5">
+        <button type="submit" name="action" value="save" class="btn btn-outline-dark">Save Draft</button>
+        <button type="submit" name="action" value="complete" class="btn btn-dark">Save &amp; Mark Complete</button>
+        <a href="{{ url_for('portal.year_detail', year=year) }}"
+           class="btn btn-outline-secondary">Cancel</a>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
 <script>
-// ---- Show/hide logic for conditional questions ----
-var allAnswers = {{ answers | tojson }};
+var allAnswers   = {{ answers | tojson }};
 var filingStatus = "{{ filing_status }}";
-var isMarried = (filingStatus === 'mfj' || filingStatus === 'mfs');
+var isMarried    = (filingStatus === 'mfj' || filingStatus === 'mfs');
 
-function getAnswer(questionId) {
-    // Check live radio buttons first
-    var radios = document.querySelectorAll('input[name="' + questionId + '"]');
-    for (var i = 0; i < radios.length; i++) {
-        if (radios[i].checked) return radios[i].value;
-    }
-    return allAnswers[questionId] || '';
+function getAnswer(qid) {
+  var radios = document.querySelectorAll('input[name="' + qid + '"]');
+  for (var i = 0; i < radios.length; i++) { if (radios[i].checked) return radios[i].value; }
+  return allAnswers[qid] || '';
 }
-
-function evaluateShowIf(block) {
-    var q = block.dataset.showIfQuestion;
-    var v = block.dataset.showIfValue;
-    if (!q) return true;
-
-    if (q === '_married') {
-        return isMarried;
-    }
-    return getAnswer(q) === v;
-}
-
 function updateVisibility() {
-    var blocks = document.querySelectorAll('[data-show-if-question]');
-    blocks.forEach(function(block) {
-        if (evaluateShowIf(block)) {
-            block.style.display = '';
-        } else {
-            block.style.display = 'none';
-        }
-    });
+  document.querySelectorAll('[data-show-if-question]').forEach(function(el) {
+    var q = el.dataset.showIfQuestion, v = el.dataset.showIfValue;
+    el.style.display = ((q === '_married') ? isMarried : (getAnswer(q) === v)) ? '' : 'none';
+  });
 }
-
-// Listen for radio changes
-document.querySelectorAll('input[type="radio"]').forEach(function(radio) {
-    radio.addEventListener('change', updateVisibility);
-});
-
-// Initial run
+document.querySelectorAll('input[type="radio"]').forEach(function(r) { r.addEventListener('change', updateVisibility); });
 updateVisibility();
 
-// ---- Dependents table ----
-var dependentData = {};
-
-function initDependentData(fieldId) {
-    var stored = document.getElementById(fieldId + '_json');
-    if (stored) {
-        try {
-            var arr = JSON.parse(stored.value);
-            dependentData[fieldId] = Array.isArray(arr) ? arr : [];
-        } catch(e) {
-            dependentData[fieldId] = [];
-        }
-        renderDependentRows(fieldId);
-    }
+function addDependent(fieldId) {
+  var list = document.getElementById(fieldId + '_list');
+  var row  = document.createElement('div');
+  row.className = 'd-flex gap-2 mb-1 dependent-row';
+  row.innerHTML =
+    '<input type="text" class="form-control form-control-sm dep-name" placeholder="Name">' +
+    '<input type="text" class="form-control form-control-sm dep-rel" placeholder="Relationship" style="width:140px">' +
+    '<input type="text" class="form-control form-control-sm dep-dob" placeholder="DOB" style="width:110px">' +
+    '<button type="button" class="btn btn-xs btn-outline-danger" ' +
+      'onclick="this.closest(\'.dependent-row\').remove(); updateDepsJson(\'' + fieldId + '\');">&times;</button>';
+  list.appendChild(row);
 }
 
-function renderDependentRows(fieldId) {
-    var tbody = document.getElementById(fieldId + '_tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    var rows = dependentData[fieldId] || [];
-    rows.forEach(function(dep, idx) {
-        tbody.appendChild(createDependentRow(fieldId, dep, idx));
-    });
+function updateDepsJson(fieldId) {
+  var rows = document.querySelectorAll('#' + fieldId + '_list .dependent-row');
+  var deps = Array.from(rows).map(function(r) {
+    return {
+      name:         r.querySelector('.dep-name').value,
+      relationship: r.querySelector('.dep-rel').value,
+      dob:          r.querySelector('.dep-dob').value,
+    };
+  }).filter(function(d) { return d.name; });
+  var h = document.getElementById(fieldId + '_json');
+  if (h) h.value = JSON.stringify(deps);
 }
 
-function createDependentRow(fieldId, dep, idx) {
-    var tr = document.createElement('tr');
-    tr.innerHTML = [
-        '<td><input type="text" placeholder="First name" value="' + escHtml(dep.first_name || '') + '" oninput="updateDependent(\'' + fieldId + '\',' + idx + ',\'first_name\',this.value)"></td>',
-        '<td><input type="text" placeholder="Last name" value="' + escHtml(dep.last_name || '') + '" oninput="updateDependent(\'' + fieldId + '\',' + idx + ',\'last_name\',this.value)"></td>',
-        '<td><input type="date" value="' + escHtml(dep.dob || '') + '" oninput="updateDependent(\'' + fieldId + '\',' + idx + ',\'dob\',this.value)"></td>',
-        '<td><select onchange="updateDependent(\'' + fieldId + '\',' + idx + ',\'relationship\',this.value)">' +
-            buildRelOptions(dep.relationship || '') + '</select></td>',
-        '<td><input type="number" min="0" max="12" value="' + escHtml(String(dep.months || '')) + '" oninput="updateDependent(\'' + fieldId + '\',' + idx + ',\'months\',this.value)" style="width:60px;"></td>',
-        '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeDependent(\'' + fieldId + '\',' + idx + ')">&#128465;</button></td>',
-    ].join('');
-    return tr;
-}
+document.addEventListener('input', function(e) {
+  if (e.target.classList.contains('dep-name') ||
+      e.target.classList.contains('dep-rel')  ||
+      e.target.classList.contains('dep-dob')) {
+    var list = e.target.closest('[id$="_list"]');
+    if (list) updateDepsJson(list.id.replace('_list',''));
+  }
+});
 
-function buildRelOptions(selected) {
-    var opts = ['','Child','Stepchild','Foster Child','Sibling','Grandchild','Other'];
-    return opts.map(function(o) {
-        return '<option value="' + o + '"' + (o === selected ? ' selected' : '') + '>' + (o || '— Select —') + '</option>';
-    }).join('');
-}
-
-function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function addDependentRow(fieldId) {
-    if (!dependentData[fieldId]) dependentData[fieldId] = [];
-    dependentData[fieldId].push({first_name:'',last_name:'',dob:'',relationship:'',months:''});
-    renderDependentRows(fieldId);
-    saveDependentJson(fieldId);
-}
-
-function removeDependent(fieldId, idx) {
-    dependentData[fieldId].splice(idx, 1);
-    renderDependentRows(fieldId);
-    saveDependentJson(fieldId);
-}
-
-function updateDependent(fieldId, idx, key, value) {
-    if (!dependentData[fieldId]) dependentData[fieldId] = [];
-    if (!dependentData[fieldId][idx]) dependentData[fieldId][idx] = {};
-    dependentData[fieldId][idx][key] = value;
-    saveDependentJson(fieldId);
-}
-
-function saveDependentJson(fieldId) {
-    var hidden = document.getElementById(fieldId + '_json');
-    if (hidden) {
-        hidden.value = JSON.stringify(dependentData[fieldId] || []);
-    }
-}
-
-// Initialize all dependent tables on the page
-document.querySelectorAll('[id$="_tbody"]').forEach(function(tbody) {
-    var fieldId = tbody.id.replace('_tbody','');
-    initDependentData(fieldId);
+document.getElementById('q-form').addEventListener('submit', function() {
+  document.querySelectorAll('[id$="_list"]').forEach(function(list) {
+    updateDepsJson(list.id.replace('_list',''));
+  });
 });
 </script>
 {% endblock %}

@@ -18,8 +18,8 @@ from .questionnaire import (
 
 portal_bp = Blueprint("portal", __name__)
 
-TAX_YEARS = [2022, 2023, 2024]
-CURRENT_YEAR = 2024
+TAX_YEARS = [2022, 2023, 2024, 2025]
+CURRENT_YEAR = 2025
 
 
 # ---------------------------------------------------------------------------
@@ -40,8 +40,47 @@ def _db_path() -> str:
     return current_app.config["DB_PATH"]
 
 
+def _preparer_db_path() -> str:
+    return current_app.config.get("PREPARER_DB_PATH", "")
+
+
 def _upload_folder() -> str:
     return current_app.config["UPLOAD_FOLDER"]
+
+
+def _build_doc_status(expected_docs, uploads, parsed_docs):
+    """Same logic as preparer's _build_doc_status — cross-reference expected vs uploaded vs parsed."""
+    parsed_by_upload = {p["upload_id"]: p for p in parsed_docs}
+    uploads_by_cat: dict = {}
+    for u in uploads:
+        uploads_by_cat.setdefault(u["category"], []).append(u)
+
+    result = []
+    for doc in expected_docs:
+        cat = doc["category"]
+        cat_uploads = uploads_by_cat.get(cat, [])
+        rows = []
+        for u in cat_uploads:
+            parsed = parsed_by_upload.get(u["id"])
+            rows.append({
+                "upload_id":     u["id"],
+                "original_name": u["original_name"],
+                "uploaded_at":   u["uploaded_at"],
+                "parsed":        bool(parsed and parsed["parsing_status"] == "done"),
+                "pending":       bool(parsed and parsed["parsing_status"] == "pending"),
+                "failed":        bool(parsed and parsed["parsing_status"] == "failed"),
+                "doc_type":      parsed["doc_type"] if parsed else None,
+                "confidence":    parsed["confidence"] if parsed else None,
+                "parse_error":   parsed["parse_error"] if parsed else None,
+            })
+        result.append({
+            "category": cat,
+            "label":    doc["label"],
+            "required": doc.get("required", True),
+            "uploaded": bool(cat_uploads),
+            "uploads":  rows,
+        })
+    return result
 
 
 def _allowed_file(filename: str) -> bool:
@@ -134,26 +173,58 @@ def year_detail(year: int):
     uploads = get_uploads(_db_path(), user_id, year)
     answers = qr["answers"] if qr else {}
     filing_status = session.get("filing_status", "single")
-    docs = get_required_documents(answers, filing_status)
+    expected_docs = get_required_documents(answers, filing_status)
 
-    # Group uploads by category
-    uploads_by_cat = {}
-    for u in uploads:
-        uploads_by_cat.setdefault(u["category"], []).append(u)
+    # Pull parse results from preparer.db so client sees parse status
+    parsed_docs = []
+    preparer_db = _preparer_db_path()
+    if preparer_db:
+        try:
+            from preparer.database import get_parsed_documents
+            parsed_docs = get_parsed_documents(preparer_db, user_id, year)
+        except Exception:
+            pass
 
-    for doc in docs:
-        doc["uploads"] = uploads_by_cat.get(doc["category"], [])
-        doc["uploaded"] = len(doc["uploads"]) > 0
-
+    doc_status = _build_doc_status(expected_docs, uploads, parsed_docs)
     status = _year_status(user_id, year)
+    questionnaire_sections = get_section_for_filing_status(QUESTIONNAIRE_SECTIONS, filing_status)
+
+    manual_entries = []
+    if preparer_db:
+        try:
+            from preparer.database import get_manual_entries
+            manual_entries = get_manual_entries(preparer_db, user_id, year)
+        except Exception:
+            pass
+
+    charitable_entries = [
+        e for e in manual_entries
+        if e["category"] in ("charitable_cash", "charitable_noncash")
+    ]
+
+    # If there are charitable entries but Charitable_Records isn't in doc_status
+    # (because the questionnaire answer wasn't set), inject it so the rows render.
+    has_charitable_in_status = any(d["category"] == "Charitable_Records" for d in doc_status)
+    if charitable_entries and not has_charitable_in_status:
+        doc_status.append({
+            "category": "Charitable_Records",
+            "label": "Charitable Contribution Records",
+            "required": False,
+            "uploaded": False,
+            "uploads": [],
+        })
 
     return render_template(
         "portal/checklist.html",
         year=year,
-        docs=docs,
+        doc_status=doc_status,
         status=status,
+        questionnaire=qr,
+        questionnaire_sections=questionnaire_sections,
         questionnaire_complete=bool(qr and qr.get("completed")),
         answers=answers,
+        manual_entries=manual_entries,
+        charitable_entries=charitable_entries,
     )
 
 
@@ -167,76 +238,50 @@ def questionnaire(year: int):
     user_id = session["user_id"]
     filing_status = session.get("filing_status", "single")
     sections = get_section_for_filing_status(QUESTIONNAIRE_SECTIONS, filing_status)
-    total_sections = len(sections)
 
     qr = get_questionnaire(_db_path(), user_id, year)
     saved_answers = qr["answers"] if qr else {}
 
     if request.method == "POST":
         action = request.form.get("action", "save")
-        section_idx = int(request.form.get("section_idx", 0))
-
-        # Collect answers from this section's questions
-        section = sections[section_idx]
         new_answers = dict(saved_answers)
 
-        for q in section["questions"]:
-            qid = q["id"]
-            qtype = q["type"]
-            if qtype == "yes_no":
-                val = request.form.get(qid, "")
-                if val in ("yes", "no"):
-                    new_answers[qid] = val
-            elif qtype == "dependents":
-                # Dependents sent as JSON string
-                dep_json = request.form.get(qid + "_json", "[]")
-                try:
-                    deps = json.loads(dep_json)
-                except (json.JSONDecodeError, ValueError):
-                    deps = []
-                new_answers[qid] = deps
-            elif qtype in ("text", "number", "select"):
-                val = request.form.get(qid, "").strip()
-                if val:
-                    new_answers[qid] = val
+        for section in sections:
+            for q in section["questions"]:
+                qid = q["id"]
+                qtype = q.get("type", "yes_no")
+                if qtype == "yes_no":
+                    val = request.form.get(qid, "")
+                    if val in ("yes", "no"):
+                        new_answers[qid] = val
+                elif qtype == "dependents":
+                    dep_json = request.form.get(qid + "_json", "[]")
+                    try:
+                        new_answers[qid] = json.loads(dep_json)
+                    except (json.JSONDecodeError, ValueError):
+                        new_answers[qid] = []
+                elif qtype in ("text", "number", "select"):
+                    val = request.form.get(qid, "").strip()
+                    if val:
+                        new_answers[qid] = val
 
-        next_section_idx = section_idx + 1
-        is_last = next_section_idx >= total_sections
-        completed = is_last and action == "finish"
-
+        completed = action == "complete"
         save_questionnaire(_db_path(), user_id, year, new_answers, completed=completed)
 
         if completed:
             flash("Questionnaire completed! Your document checklist has been updated.", "success")
             return redirect(url_for("portal.year_detail", year=year))
-        elif action == "next" and not is_last:
-            return redirect(url_for("portal.questionnaire", year=year, section=next_section_idx))
-        elif action == "back" and section_idx > 0:
-            return redirect(url_for("portal.questionnaire", year=year, section=section_idx - 1))
         else:
             flash("Progress saved.", "success")
-            return redirect(url_for("portal.questionnaire", year=year, section=section_idx))
-
-    # GET — render the requested section
-    try:
-        section_idx = int(request.args.get("section", 0))
-        section_idx = max(0, min(section_idx, total_sections - 1))
-    except (ValueError, TypeError):
-        section_idx = 0
-
-    section = sections[section_idx]
-    is_last = (section_idx + 1) >= total_sections
+            return redirect(url_for("portal.questionnaire", year=year))
 
     return render_template(
         "portal/questionnaire.html",
         year=year,
         sections=sections,
-        section=section,
-        section_idx=section_idx,
-        total_sections=total_sections,
-        is_last=is_last,
         answers=saved_answers,
         filing_status=filing_status,
+        questionnaire_complete=bool(qr and qr.get("completed")),
     )
 
 
@@ -330,6 +375,62 @@ def _trigger_parse_on_upload(
         )
     except Exception:
         pass  # Never surface parse failures to the client
+
+
+@portal_bp.route("/year/<int:year>/charitable/add", methods=["POST"])
+@login_required
+def save_charitable_entry(year: int):
+    if year not in TAX_YEARS:
+        flash("Invalid tax year.", "error")
+        return redirect(url_for("portal.dashboard"))
+
+    user_id = session["user_id"]
+    name = request.form.get("name", "").strip()
+    category = request.form.get("category", "charitable_cash")
+    try:
+        amount = float(request.form.get("amount", "0").replace(",", ""))
+    except ValueError:
+        amount = 0.0
+
+    if not name or amount <= 0:
+        flash("Organization name and a positive amount are required.", "error")
+        return redirect(url_for("portal.year_detail", year=year))
+
+    preparer_db = _preparer_db_path()
+    if preparer_db:
+        try:
+            from preparer.database import save_manual_entry
+            save_manual_entry(preparer_db, user_id, year, category, name, amount)
+            flash(f"Entry '{name}' saved.", "success")
+        except Exception as exc:
+            flash(f"Could not save entry: {exc}", "error")
+    else:
+        flash("Preparer database not configured.", "error")
+
+    # Optional supporting file
+    file = request.files.get("file")
+    if file and file.filename and _allowed_file(file.filename):
+        try:
+            _save_upload_file(user_id, year, "Charitable_Records", file)
+        except Exception:
+            pass
+
+    return redirect(url_for("portal.year_detail", year=year))
+
+
+@portal_bp.route("/year/<int:year>/charitable/<int:entry_id>/delete", methods=["POST"])
+@login_required
+def delete_charitable_entry(year: int, entry_id: int):
+    user_id = session["user_id"]
+    preparer_db = _preparer_db_path()
+    if preparer_db:
+        try:
+            from preparer.database import delete_manual_entry
+            delete_manual_entry(preparer_db, entry_id, user_id)
+            flash("Entry deleted.", "success")
+        except Exception as exc:
+            flash(f"Could not delete entry: {exc}", "error")
+    return redirect(url_for("portal.year_detail", year=year))
 
 
 @portal_bp.route("/year/<int:year>/upload/<int:upload_id>/delete", methods=["POST"])

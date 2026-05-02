@@ -337,6 +337,7 @@ def client_detail(user_id: int):
         azure_configured=azure_configured,
         form_1040_data=form_1040_data,
         manual_entries=manual_entries,
+        charitable_entries=[e for e in manual_entries if e["category"] in ("charitable_cash", "charitable_noncash")],
         field_overrides=field_overrides,
         tax_estimate=tax_estimate,
     )

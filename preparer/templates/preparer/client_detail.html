@@ -82,12 +82,6 @@
 <div class="tab-content" id="clientTabContent">
 
   {# ════════════════════════════════════════ TAB 1: Document Status ════ #}
-  {% set charitable_entries = [] %}
-  {% for _e in (manual_entries or []) %}
-    {% if _e.category in ('charitable_cash', 'charitable_noncash') %}
-      {% set charitable_entries = charitable_entries + [_e] %}
-    {% endif %}
-  {% endfor %}
   <div class="tab-pane fade show active" id="tab-docs">
     {% if not doc_status %}
       <div class="alert alert-info">No documents expected. Ask the client to complete the questionnaire first.</div>

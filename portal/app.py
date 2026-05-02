@@ -44,4 +44,17 @@ def create_app(config: dict = None) -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(portal_bp)
 
+    @app.template_filter("fmt_datetime")
+    def fmt_datetime(value):
+        if not value:
+            return "--"
+        from datetime import datetime
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                dt = datetime.strptime(str(value).strip(), fmt)
+                return dt.strftime("%H:%M %b %d, %Y")
+            except ValueError:
+                continue
+        return str(value)
+
     return app

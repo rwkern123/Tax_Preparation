@@ -45,6 +45,7 @@ from src.models import DocumentRecord, ExtractionResult
 from src.organize import OwnerContext, organize_client_documents
 from src.questions import generate_questions
 from src.scanner import discover_clients, index_client_files
+from src.tax_calculator import calculate_tax, write_tax_estimate
 
 
 def maybe_redact(text: str, enabled: bool) -> str:
@@ -452,6 +453,16 @@ def process_client(client_dir: Path, config: AppConfig) -> None:
     _write_1099b_trade_outputs(client_dir, out_dir, config, extraction)
     maybe_generate_prior_year_comparison(client_dir, out_dir, config)
 
+    estimate = calculate_tax(
+        extraction,
+        filing_status=config.filing_status,
+        num_children=config.num_children,
+        estimated_payments=config.estimated_payments,
+        foreign_tax_credit=config.foreign_tax_credit,
+        tax_year=config.tax_year,
+    )
+    write_tax_estimate(out_dir, estimate, client=client_dir.name)
+
 
 def parse_args() -> AppConfig:
     p = argparse.ArgumentParser(description="Local-only tax return workpaper generator")
@@ -471,6 +482,15 @@ def parse_args() -> AppConfig:
     p.add_argument("--enable-azure", action="store_true", help="Enable Azure Document Intelligence for low-confidence W-2s (opt-in)")
     p.add_argument("--azure-endpoint", help="Azure Document Intelligence endpoint URL (default: AZURE_FORM_RECOGNIZER_ENDPOINT env var)")
     p.add_argument("--azure-api-key", help="Azure Document Intelligence API key (default: AZURE_FORM_RECOGNIZER_KEY env var)")
+    p.add_argument("--filing-status", default="single",
+                   choices=["single", "mfj", "mfs", "hoh", "qss"],
+                   help="Filing status for tax estimate (single/mfj/mfs/hoh/qss). Default: single")
+    p.add_argument("--num-children", type=int, default=0,
+                   help="Number of qualifying children for Child Tax Credit. Default: 0")
+    p.add_argument("--estimated-payments", type=float, default=0.0,
+                   help="Total federal estimated tax payments made (Form 1040-ES). Default: 0")
+    p.add_argument("--foreign-tax-credit", type=float, default=0.0,
+                   help="Foreign tax credit amount (Form 1116). Default: 0")
     args = p.parse_args()
 
     import os
@@ -494,6 +514,10 @@ def parse_args() -> AppConfig:
         enable_azure=args.enable_azure,
         azure_endpoint=azure_endpoint,
         azure_api_key=azure_api_key,
+        filing_status=args.filing_status,
+        num_children=args.num_children,
+        estimated_payments=args.estimated_payments,
+        foreign_tax_credit=args.foreign_tax_credit,
     )
 
 

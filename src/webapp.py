@@ -245,12 +245,90 @@ _CLIENT_TEMPLATE = """
   <p>No document records found. Run workpaper generation first.</p>
   {% endif %}
 
+  {% if tax_estimate %}
+  <h2>Federal Tax Estimate</h2>
+  <p class="meta">
+    Tax Year: <strong>{{ tax_estimate.tax_year }}</strong> &nbsp;|&nbsp;
+    Filing Status: <strong>{{ tax_estimate.filing_status | upper }}</strong>
+  </p>
+
+  {% set result = tax_estimate.refund_or_owed %}
+  {% if result >= 0 %}
+  <div style="background:#d4edda;border:1px solid #c3e6cb;border-radius:6px;padding:12px 18px;margin-bottom:16px;font-size:1.1em;">
+    <strong>Estimated Refund: ${{ '{:,.0f}'.format(result) }}</strong>
+  </div>
+  {% else %}
+  <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:12px 18px;margin-bottom:16px;font-size:1.1em;">
+    <strong>Estimated Amount Owed: ${{ '{:,.0f}'.format(result | abs) }}</strong>
+  </div>
+  {% endif %}
+
+  <table style="width:520px;border-collapse:collapse;font-size:0.9em;">
+    <tr><th colspan="2" style="text-align:left;padding:6px 8px;background:#f7f7f7;border:1px solid #ddd;">Income</th></tr>
+    {% if tax_estimate.w2_wages %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">W-2 Wages</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.w2_wages) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.taxable_interest %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Taxable Interest</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.taxable_interest) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.ordinary_dividends %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Ordinary Dividends</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.ordinary_dividends) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.short_term_cap_gains or tax_estimate.long_term_cap_gains %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Capital Gains (ST / LT)</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.short_term_cap_gains) }} / ${{ '{:,.0f}'.format(tax_estimate.long_term_cap_gains) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.ira_pension_taxable %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">IRA / Pension Distributions</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.ira_pension_taxable) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.ss_benefits_taxable %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Social Security (taxable)</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.ss_benefits_taxable) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.schedule_c_net %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Schedule C / SE Income</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.schedule_c_net) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.unemployment_comp %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Unemployment Compensation</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.unemployment_comp) }}</td></tr>
+    {% endif %}
+    <tr style="font-weight:bold;"><td style="padding:4px 8px;border:1px solid #ddd;">Total Income</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.total_income) }}</td></tr>
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;color:#666;">AGI</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;color:#666;">${{ '{:,.0f}'.format(tax_estimate.agi) }}</td></tr>
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;color:#666;">Deduction ({{ tax_estimate.deduction_type }})</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;color:#666;">(${{ '{:,.0f}'.format(tax_estimate.deduction_used) }})</td></tr>
+    <tr style="font-weight:bold;"><td style="padding:4px 8px;border:1px solid #ddd;">Taxable Income</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.taxable_income) }}</td></tr>
+    <tr><th colspan="2" style="text-align:left;padding:6px 8px;background:#f7f7f7;border:1px solid #ddd;">Tax</th></tr>
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Income Tax (brackets)</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.regular_tax) }}</td></tr>
+    {% if tax_estimate.ltcg_tax %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">LTCG / Qualified Dividend Tax</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.ltcg_tax) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.niit %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Net Investment Income Tax (3.8%)</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.niit) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.se_tax %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Self-Employment Tax</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.se_tax) }}</td></tr>
+    {% endif %}
+    {% if tax_estimate.child_tax_credit %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Child Tax Credit</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">(${{ '{:,.0f}'.format(tax_estimate.child_tax_credit) }})</td></tr>
+    {% endif %}
+    <tr style="font-weight:bold;"><td style="padding:4px 8px;border:1px solid #ddd;">Total Federal Tax</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${{ '{:,.0f}'.format(tax_estimate.total_tax) }}</td></tr>
+    <tr><th colspan="2" style="text-align:left;padding:6px 8px;background:#f7f7f7;border:1px solid #ddd;">Payments</th></tr>
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">W-2 Withholding</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">(${{ '{:,.0f}'.format(tax_estimate.w2_withholding) }})</td></tr>
+    {% if tax_estimate.other_withholding %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Other Withholding</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">(${{ '{:,.0f}'.format(tax_estimate.other_withholding) }})</td></tr>
+    {% endif %}
+    {% if tax_estimate.estimated_payments %}
+    <tr><td style="padding:4px 8px;border:1px solid #ddd;">Estimated Payments</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">(${{ '{:,.0f}'.format(tax_estimate.estimated_payments) }})</td></tr>
+    {% endif %}
+  </table>
+  <p class="meta" style="margin-top:8px;">
+    <em>Estimate only. See <code>Tax_Estimate.md</code> in workpapers for full line-item detail and notes.</em>
+  </p>
+  {% endif %}
+
   <h2>Workpaper Files</h2>
   <ul>
     <li>{{ summary.workpapers_dir / 'Return_Prep_Checklist.md' }}</li>
     <li>{{ summary.workpapers_dir / 'Questions_For_Client.md' }}</li>
     <li>{{ summary.workpapers_dir / 'Document_Index.csv' }}</li>
     <li>{{ summary.workpapers_dir / 'Data_Extract.json' }}</li>
+    <li>{{ summary.workpapers_dir / 'Tax_Estimate.md' }}</li>
     <li>{{ summary.workpapers_dir / 'Prior_Year_Comparison.md' }}</li>
   </ul>
 </body></html>
@@ -281,10 +359,20 @@ def create_app(root: Path):
         overrides = _load_overrides(wp_dir)
         records = _prepare_records(raw_records, overrides)
         flash = request.args.get("saved")
+
+        tax_estimate = None
+        estimate_path = wp_dir / "Tax_Estimate.json"
+        if estimate_path.exists():
+            try:
+                tax_estimate = json.loads(estimate_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                pass
+
         return render_template_string(
             _CLIENT_TEMPLATE,
             summary=summary,
             records=records,
+            tax_estimate=tax_estimate,
             flash="Overrides saved." if flash else None,
         )
 

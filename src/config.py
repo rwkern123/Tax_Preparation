@@ -26,3 +26,8 @@ class AppConfig:
     enable_azure: bool = False
     azure_endpoint: str | None = None
     azure_api_key: str | None = None
+    # Tax calculator inputs
+    filing_status: str = "single"
+    num_children: int = 0
+    estimated_payments: float = 0.0
+    foreign_tax_credit: float = 0.0

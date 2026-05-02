@@ -306,6 +306,21 @@ def client_detail(user_id: int):
     form_1040_data = aggregate_1040_data(parsed_docs, user, year, manual_entries=manual_entries)
     field_overrides = get_field_overrides(_preparer_db(), user_id, year)
 
+    try:
+        from src.tax_calculator import calculate_tax_from_docs
+        num_children = int(user.get("num_dependents") or 0)
+        tax_estimate = calculate_tax_from_docs(
+            parsed_docs,
+            filing_status=filing_status,
+            num_children=num_children,
+            estimated_payments=float(user.get("estimated_payments") or 0),
+            foreign_tax_credit=float(user.get("foreign_tax_credit") or 0),
+            tax_year=year,
+            manual_entries=manual_entries,
+        )
+    except Exception:
+        tax_estimate = None
+
     return render_template(
         "preparer/client_detail.html",
         user=user,
@@ -323,6 +338,7 @@ def client_detail(user_id: int):
         form_1040_data=form_1040_data,
         manual_entries=manual_entries,
         field_overrides=field_overrides,
+        tax_estimate=tax_estimate,
     )
 
 

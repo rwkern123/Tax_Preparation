@@ -149,31 +149,20 @@ def login():
 
     if request.method == "POST":
         email = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
 
-        if not email or not password:
-            flash("Email and password are required.", "error")
+        if not email:
+            flash("Email is required.", "error")
             return render_template("auth/login.html", email=email)
 
         user = get_user_by_email(_db_path(), email)
-        if not user or not check_password_hash(user["password_hash"], password):
-            flash("Invalid email or password.", "error")
+        if not user:
+            flash("No account found for that email.", "error")
             return render_template("auth/login.html", email=email)
 
-        # Generate and send 2FA code
-        code = generate_code()
-        method = user.get("two_fa_method", "email")
-        save_code(_db_path(), user["id"], code, method)
-        send_code(user, code, method, _smtp_config())
-
-        # Store pending user in session (not authenticated yet)
+        # DEV MODE: skip password and 2FA — log in directly
         session.clear()
-        session["pending_user_id"] = user["id"]
-        session["pending_method"] = method
-        session["pending_email"] = user["email"]
-        session["pending_phone"] = user.get("phone", "")
-
-        return redirect(url_for("auth.verify"))
+        session["user_id"] = user["id"]
+        return redirect(url_for("portal.dashboard"))
 
     return render_template("auth/login.html", email="")
 

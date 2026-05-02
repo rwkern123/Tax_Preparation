@@ -33,6 +33,18 @@ CREATE TABLE IF NOT EXISTS manual_entries (
     amount      REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_manual_user_year ON manual_entries(user_id, tax_year);
+
+CREATE TABLE IF NOT EXISTS field_overrides (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL,
+    tax_year  INTEGER NOT NULL,
+    doc_type  TEXT NOT NULL,
+    person    TEXT NOT NULL,
+    field     TEXT NOT NULL,
+    value     TEXT,
+    UNIQUE(user_id, tax_year, doc_type, person, field)
+);
+CREATE INDEX IF NOT EXISTS idx_overrides_user_year ON field_overrides(user_id, tax_year);
 """
 
 
@@ -264,6 +276,73 @@ def delete_manual_entry(db_path: str, entry_id: int, user_id: int) -> None:
     conn = _get_db(db_path)
     try:
         conn.execute("DELETE FROM manual_entries WHERE id=? AND user_id=?", (entry_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_field_overrides(db_path: str, user_id: int, tax_year: int) -> dict:
+    """Return overrides as {doc_type: {person: {field: value}}}."""
+    conn = _get_db(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT doc_type, person, field, value FROM field_overrides WHERE user_id=? AND tax_year=?",
+            (user_id, tax_year),
+        ).fetchall()
+        result: dict = {}
+        for r in rows:
+            result.setdefault(r["doc_type"], {}).setdefault(r["person"], {})[r["field"]] = r["value"]
+        return result
+    finally:
+        conn.close()
+
+
+def save_field_override(
+    db_path: str, user_id: int, tax_year: int,
+    doc_type: str, person: str, field: str, value: str | None,
+) -> None:
+    conn = _get_db(db_path)
+    try:
+        if value is None or value.strip() == "":
+            conn.execute(
+                "DELETE FROM field_overrides WHERE user_id=? AND tax_year=? AND doc_type=? AND person=? AND field=?",
+                (user_id, tax_year, doc_type, person, field),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO field_overrides (user_id, tax_year, doc_type, person, field, value)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(user_id, tax_year, doc_type, person, field) DO UPDATE SET value=excluded.value""",
+                (user_id, tax_year, doc_type, person, field, value),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_field_override_by_person_field(
+    db_path: str, user_id: int, tax_year: int, doc_type: str, person: str, field: str
+) -> None:
+    """Delete a single field override identified by person.field."""
+    conn = _get_db(db_path)
+    try:
+        conn.execute(
+            "DELETE FROM field_overrides WHERE user_id=? AND tax_year=? AND doc_type=? AND person=? AND field=?",
+            (user_id, tax_year, doc_type, person, field),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_field_overrides_for_doctype(db_path: str, user_id: int, tax_year: int, doc_type: str) -> None:
+    """Delete all field overrides for a given user/year/doc_type (used when reparsing overwrites manual edits)."""
+    conn = _get_db(db_path)
+    try:
+        conn.execute(
+            "DELETE FROM field_overrides WHERE user_id=? AND tax_year=? AND doc_type=?",
+            (user_id, tax_year, doc_type),
+        )
         conn.commit()
     finally:
         conn.close()

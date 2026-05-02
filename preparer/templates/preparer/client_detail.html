@@ -151,20 +151,7 @@
                       {% if charitable_entries %}rowspan="{{ charitable_entries | length + 1 }}"{% endif %}>
                     {{ doc.label }}
                   </td>
-                  {% if charitable_entries %}
                   <td class="text-center">
-                    <span class="badge bg-success-subtle text-success border border-success-subtle">
-                      {{ charitable_entries | length }} entr{{ 'y' if charitable_entries | length == 1 else 'ies' }}
-                    </span>
-                  </td>
-                  <td class="text-muted small">—</td>
-                  <td class="text-muted small fst-italic"></td>
-                  {% else %}
-                  <td class="text-muted small">—</td>
-                  <td class="text-muted small">—</td>
-                  <td class="text-muted small fst-italic">No entries</td>
-                  {% endif %}
-                  <td class="text-end">
                     <button type="button"
                             class="btn btn-sm btn-outline-secondary"
                             data-bs-toggle="modal"
@@ -172,6 +159,13 @@
                       + Add
                     </button>
                   </td>
+                  <td class="text-muted small">—</td>
+                  {% if charitable_entries %}
+                  <td class="text-muted small fst-italic"></td>
+                  {% else %}
+                  <td class="text-muted small fst-italic">No entries</td>
+                  {% endif %}
+                  <td></td>
                 </tr>
                 {# Sub-rows for each charitable entry #}
                 {% for e in charitable_entries %}
@@ -194,7 +188,7 @@
                           class="btn btn-sm btn-outline-secondary"
                           data-bs-toggle="modal"
                           data-bs-target="#uploadModal">
-                    + Add file
+                    + Add
                   </button>
                 </td>
                 <td class="text-muted small">—</td>
@@ -361,6 +355,30 @@
   })();
   </script>
 
+  {# ── Reparse Override Confirmation Modal ── #}
+  <div class="modal fade" id="reparseConfirmModal" tabindex="-1" aria-labelledby="reparseConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-semibold" id="reparseConfirmLabel">Manual Overrides Detected</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2 small text-muted">Check any fields you want to overwrite with the newly parsed data. Unchecked fields will keep their manual values.</p>
+          <div class="d-flex gap-3 mb-2">
+            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="reparseSelectAll">Select all</button>
+            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="reparseSelectNone">Select none</button>
+          </div>
+          <div id="reparseOverrideList" class="small" style="max-height:280px;overflow-y:auto"></div>
+        </div>
+        <div class="modal-footer gap-2">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" id="reparseApplyBtn" class="btn btn-primary">Re-parse</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {# ── Charitable Contributions Modal ── #}
   <div class="modal fade" id="charitableModal" tabindex="-1" aria-labelledby="charitableModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width:520px">
@@ -414,6 +432,7 @@
       </div>
     </div>
   </div>
+
 
   {# ════════════════════════════════════════ TAB 2: Extracted Data ════ #}
   <div class="tab-pane fade" id="tab-data">
@@ -503,93 +522,36 @@
       <div id="panel-w2" class="extracted-panel {% if not (w2_docs == parsed_docs | selectattr('doc_type', 'equalto', 'w2') | list or true) %}d-none{% endif %}">
 
         {# Per-document parse controls #}
+        {% set w2_override_fields = [] %}
+        {% for person_key, person_fields in field_overrides.get('w2', {}).items() %}
+          {% for f in person_fields.keys() %}{% if w2_override_fields.append(person_key + '.' + f) %}{% endif %}{% endfor %}
+        {% endfor %}
         {% for pd in w2_docs %}
         <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-white border rounded small">
           <span class="fw-semibold text-truncate" style="max-width:220px" title="{{ pd.original_name }}">{{ pd.original_name }}</span>
           <button type="button" class="btn btn-xs btn-outline-secondary ms-auto parse-btn"
                   data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}">&#8635; Parse</button>
+                  data-year="{{ year }}" data-doctype="w2"
+                  data-overrides='{{ w2_override_fields | tojson }}'>&#8635; Parse</button>
           <button type="button" class="btn btn-xs btn-outline-primary parse-btn"
                   data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}" data-ocr="1">OCR Parse</button>
+                  data-year="{{ year }}" data-ocr="1" data-doctype="w2"
+                  data-overrides='{{ w2_override_fields | tojson }}'>OCR Parse</button>
           {% if azure_configured %}
           <button type="button" class="btn btn-xs btn-outline-success azure-parse-btn"
                   data-url="{{ url_for('preparer.azure_enhance', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}">&#9889; Azure</button>
+                  data-year="{{ year }}" data-doctype="w2"
+                  data-overrides='{{ w2_override_fields | tojson }}'>&#9889; Azure</button>
           {% endif %}
           <span class="parser-status" id="parse-status-{{ pd.upload_id }}"></span>
         </div>
         {% endfor %}
 
-        {# Top half: qualitative info side-by-side #}
-        <div class="row g-3 mb-3">
-          <div class="col-md-6">
-            <div class="card h-100 shadow-sm">
-              <div class="card-header py-2 fw-semibold small"
-                   style="background-color:#e8f0fe; border-left:4px solid var(--bs-primary);">
-                Taxpayer
-              </div>
-              <div class="card-body py-2">
-                {% if w2_tp_docs %}
-                  {% for pd in w2_tp_docs %}
-                    {% for w in pd.extracted_json.get('w2', []) %}
-                    <table class="table table-sm field-table mb-2">
-                      <tr><th colspan="2" class="table-light small">
-                        {% if pd.file_path %}
-                        <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}" target="_blank"
-                           class="text-decoration-none">{{ pd.original_name }} &#8599;</a>
-                        {% else %}{{ pd.original_name }}{% endif %}
-                      </th></tr>
-                      <tr><td>Employer</td><td>{{ w.get('employer_name') or '--' }}</td></tr>
-                      <tr><td>EIN</td><td>{{ w.get('employer_ein') or '--' }}</td></tr>
-                      <tr><td>Employee</td><td>{{ w.get('employee_name') or '--' }}</td></tr>
-                      {% if w.get('employer_address') %}
-                      <tr><td>Address</td><td>{{ w.get('employer_address') }}{% if w.get('employer_city') %}, {{ w.get('employer_city') }}{% endif %}{% if w.get('employer_state') %}, {{ w.get('employer_state') }}{% endif %}{% if w.get('employer_zip') %} {{ w.get('employer_zip') }}{% endif %}</td></tr>
-                      {% endif %}
-                    </table>
-                    {% endfor %}
-                  {% endfor %}
-                {% else %}
-                  <p class="text-muted small fst-italic mb-0">No taxpayer W-2 uploaded.</p>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="card h-100 shadow-sm">
-              <div class="card-header py-2 fw-semibold small"
-                   style="background-color:#fce8f3; border-left:4px solid #d63384;">
-                Spouse
-              </div>
-              <div class="card-body py-2">
-                {% if w2_sp_docs %}
-                  {% for pd in w2_sp_docs %}
-                    {% for w in pd.extracted_json.get('w2', []) %}
-                    <table class="table table-sm field-table mb-2">
-                      <tr><th colspan="2" class="table-light small">
-                        {% if pd.file_path %}
-                        <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}" target="_blank"
-                           class="text-decoration-none">{{ pd.original_name }} &#8599;</a>
-                        {% else %}{{ pd.original_name }}{% endif %}
-                      </th></tr>
-                      <tr><td>Employer</td><td>{{ w.get('employer_name') or '--' }}</td></tr>
-                      <tr><td>EIN</td><td>{{ w.get('employer_ein') or '--' }}</td></tr>
-                      <tr><td>Employee</td><td>{{ w.get('employee_name') or '--' }}</td></tr>
-                      {% if w.get('employer_address') %}
-                      <tr><td>Address</td><td>{{ w.get('employer_address') }}{% if w.get('employer_city') %}, {{ w.get('employer_city') }}{% endif %}{% if w.get('employer_state') %}, {{ w.get('employer_state') }}{% endif %}{% if w.get('employer_zip') %} {{ w.get('employer_zip') }}{% endif %}</td></tr>
-                      {% endif %}
-                    </table>
-                    {% endfor %}
-                  {% endfor %}
-                {% else %}
-                  <p class="text-muted small fst-italic mb-0">No spouse W-2 uploaded.</p>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-        </div>
+        {# Compute overrides lookup #}
+        {% set w2_ov = field_overrides.get('w2', {}) %}
 
-        {# Bottom: Wages & Withholding summary table — accumulate per-person totals #}
+        {# Helper: resolved display value (override wins over parsed) for text fields #}
+        {# Numeric aggregation for Wages & Withholding #}
         {% set tp = namespace(box1=none,box2=none,box3=none,box4=none,box5=none,box6=none,box16=none,box17=none,retire=false) %}
         {% for pd in w2_tp_docs %}{% for w in pd.extracted_json.get('w2', []) %}
           {% if w.get('box1_wages')           is not none %}{% set tp.box1  = (tp.box1  or 0) + w.get('box1_wages')           %}{% endif %}
@@ -616,75 +578,270 @@
           {% if w.get('box13_retirement_plan') %}{% set sp.retire = true %}{% endif %}
         {% endfor %}{% endfor %}
 
-        <div class="card shadow-sm">
-          <div class="card-header py-2 fw-semibold small"
-               style="border-left:4px solid var(--bs-primary);">
-            Wages &amp; Withholding
+        {# Apply numeric overrides #}
+        {% set tp_box1  = w2_ov.get('taxpayer',{}).get('box1_wages')           | float if w2_ov.get('taxpayer',{}).get('box1_wages')           is not none else tp.box1  %}
+        {% set tp_box2  = w2_ov.get('taxpayer',{}).get('box2_fed_withholding') | float if w2_ov.get('taxpayer',{}).get('box2_fed_withholding') is not none else tp.box2  %}
+        {% set tp_box3  = w2_ov.get('taxpayer',{}).get('box3_ss_wages')        | float if w2_ov.get('taxpayer',{}).get('box3_ss_wages')        is not none else tp.box3  %}
+        {% set tp_box4  = w2_ov.get('taxpayer',{}).get('box4_ss_tax')          | float if w2_ov.get('taxpayer',{}).get('box4_ss_tax')          is not none else tp.box4  %}
+        {% set tp_box5  = w2_ov.get('taxpayer',{}).get('box5_medicare_wages')  | float if w2_ov.get('taxpayer',{}).get('box5_medicare_wages')  is not none else tp.box5  %}
+        {% set tp_box6  = w2_ov.get('taxpayer',{}).get('box6_medicare_tax')    | float if w2_ov.get('taxpayer',{}).get('box6_medicare_tax')    is not none else tp.box6  %}
+        {% set tp_box16 = w2_ov.get('taxpayer',{}).get('box16_state_wages')    | float if w2_ov.get('taxpayer',{}).get('box16_state_wages')    is not none else tp.box16 %}
+        {% set tp_box17 = w2_ov.get('taxpayer',{}).get('box17_state_tax')      | float if w2_ov.get('taxpayer',{}).get('box17_state_tax')      is not none else tp.box17 %}
+        {% set sp_box1  = w2_ov.get('spouse',{}).get('box1_wages')             | float if w2_ov.get('spouse',{}).get('box1_wages')             is not none else sp.box1  %}
+        {% set sp_box2  = w2_ov.get('spouse',{}).get('box2_fed_withholding')   | float if w2_ov.get('spouse',{}).get('box2_fed_withholding')   is not none else sp.box2  %}
+        {% set sp_box3  = w2_ov.get('spouse',{}).get('box3_ss_wages')          | float if w2_ov.get('spouse',{}).get('box3_ss_wages')          is not none else sp.box3  %}
+        {% set sp_box4  = w2_ov.get('spouse',{}).get('box4_ss_tax')            | float if w2_ov.get('spouse',{}).get('box4_ss_tax')            is not none else sp.box4  %}
+        {% set sp_box5  = w2_ov.get('spouse',{}).get('box5_medicare_wages')    | float if w2_ov.get('spouse',{}).get('box5_medicare_wages')    is not none else sp.box5  %}
+        {% set sp_box6  = w2_ov.get('spouse',{}).get('box6_medicare_tax')      | float if w2_ov.get('spouse',{}).get('box6_medicare_tax')      is not none else sp.box6  %}
+        {% set sp_box16 = w2_ov.get('spouse',{}).get('box16_state_wages')      | float if w2_ov.get('spouse',{}).get('box16_state_wages')      is not none else sp.box16 %}
+        {% set sp_box17 = w2_ov.get('spouse',{}).get('box17_state_tax')        | float if w2_ov.get('spouse',{}).get('box17_state_tax')        is not none else sp.box17 %}
+
+        {# Qualitative field helpers: override wins, else first parsed doc value #}
+        {% set tp_w = (w2_tp_docs[0].extracted_json.get('w2', [{}])[0]) if w2_tp_docs else {} %}
+        {% set sp_w = (w2_sp_docs[0].extracted_json.get('w2', [{}])[0]) if w2_sp_docs else {} %}
+        {% macro qval(person, field, parsed) %}{{ w2_ov.get(person,{}).get(field) if w2_ov.get(person,{}).get(field) is not none else parsed }}{% endmacro %}
+
+        <form method="post" action="{{ url_for('preparer.save_field_override_route', user_id=user.id, year=year) }}" id="w2OverrideForm">
+          <input type="hidden" name="doc_type" value="w2">
+          <input type="hidden" name="active_panel" value="panel-w2">
+
+          {# Global edit controls #}
+          <div class="d-flex justify-content-end mb-2 gap-1">
+            <button type="button" id="w2EditBtn" class="btn btn-sm btn-outline-secondary">Edit</button>
+            <button type="submit" id="w2SaveBtn" class="btn btn-sm btn-primary d-none">Save</button>
+            <button type="button" id="w2CancelBtn" class="btn btn-sm btn-outline-secondary d-none">Cancel</button>
           </div>
-          <div class="table-responsive">
-            <table class="table table-sm field-table mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th style="width:40%">Field</th>
-                  <th class="text-end">Taxpayer</th>
-                  {% if w2_sp_docs %}<th class="text-end">Spouse</th>{% endif %}
-                  <th class="text-end">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% macro w2row(label, tp_val, sp_val) %}
-                <tr>
-                  <td>{{ label }}</td>
-                  <td class="text-end amount">{{ tp_val | fmt_amount }}</td>
-                  {% if w2_sp_docs %}<td class="text-end amount">{{ sp_val | fmt_amount }}</td>{% endif %}
-                  <td class="text-end amount fw-semibold">
-                    {% if tp_val is not none or sp_val is not none %}{{ ((tp_val or 0) + (sp_val or 0)) | fmt_amount }}{% else %}—{% endif %}
-                  </td>
-                </tr>
-                {% endmacro %}
-                {{ w2row('Box 1 — Wages',            tp.box1,  sp.box1)  }}
-                {{ w2row('Box 2 — Federal Withheld', tp.box2,  sp.box2)  }}
-                {{ w2row('Box 3 — SS Wages',         tp.box3,  sp.box3)  }}
-                {{ w2row('Box 4 — SS Tax',           tp.box4,  sp.box4)  }}
-                {{ w2row('Box 5 — Medicare Wages',   tp.box5,  sp.box5)  }}
-                {{ w2row('Box 6 — Medicare Tax',     tp.box6,  sp.box6)  }}
-                <tr>
-                  <td>Box 13 — Retirement Plan</td>
-                  <td class="text-end">{{ 'Yes' if tp.retire else 'No' }}</td>
-                  {% if w2_sp_docs %}<td class="text-end">{{ 'Yes' if sp.retire else 'No' }}</td>{% endif %}
-                  <td class="text-end text-muted">—</td>
-                </tr>
-                {{ w2row('Box 16 — State Wages', tp.box16, sp.box16) }}
-                {{ w2row('Box 17 — State Tax',   tp.box17, sp.box17) }}
-              </tbody>
-            </table>
+
+          {# Qualitative info cards #}
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <div class="card h-100 shadow-sm">
+                <div class="card-header py-2 fw-semibold small"
+                     style="background-color:#e8f0fe; border-left:4px solid var(--bs-primary);">Taxpayer</div>
+                <div class="card-body py-2">
+                  {% if w2_tp_docs %}
+                  {% set pd = w2_tp_docs[0] %}
+                  <div class="small mb-1">
+                    {% if pd.file_path %}<a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}" target="_blank" class="text-decoration-none fw-semibold">{{ pd.original_name }} &#8599;</a>{% else %}<span class="fw-semibold">{{ pd.original_name }}</span>{% endif %}
+                  </div>
+                  <table class="table table-sm field-table mb-0">
+                    {% macro qrow(label, field_key, parsed_val, input_type) %}
+                    {% set ov_val = w2_ov.get('taxpayer',{}).get(field_key) %}
+                    {% set display = ov_val if ov_val is not none else parsed_val %}
+                    <tr>
+                      <td class="text-muted" style="width:35%">{{ label }}</td>
+                      <td>
+                        <span class="w2-display {% if ov_val is not none %}text-primary fw-semibold{% endif %}">{{ display or '--' }}</span>
+                        <input type="{{ input_type or 'text' }}" name="tp_{{ field_key }}"
+                               value="{{ display or '' }}"
+                               data-parsed="{{ parsed_val or '' }}"
+                               class="w2-input form-control form-control-sm d-none">
+                      </td>
+                    </tr>
+                    {% endmacro %}
+                    {{ qrow('Employer',  'employer_name', tp_w.get('employer_name'), 'text') }}
+                    {{ qrow('EIN',       'employer_ein',  tp_w.get('employer_ein'),  'text') }}
+                    {{ qrow('Employee',  'employee_name', tp_w.get('employee_name'), 'text') }}
+                    {% set tp_addr_parsed = (tp_w.get('employer_address','') ~ (', ' ~ tp_w.get('employer_city','') if tp_w.get('employer_city') else '') ~ (', ' ~ tp_w.get('employer_state','') if tp_w.get('employer_state') else '') ~ (' ' ~ tp_w.get('employer_zip','') if tp_w.get('employer_zip') else '')) | trim %}
+                    {{ qrow('Address',   'employer_address_full', tp_addr_parsed, 'text') }}
+                  </table>
+                  {% else %}
+                  <p class="text-muted small fst-italic mb-0">No taxpayer W-2 uploaded.</p>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card h-100 shadow-sm">
+                <div class="card-header py-2 fw-semibold small"
+                     style="background-color:#fce8f3; border-left:4px solid #d63384;">Spouse</div>
+                <div class="card-body py-2">
+                  {% if w2_sp_docs %}
+                  {% set pd = w2_sp_docs[0] %}
+                  <div class="small mb-1">
+                    {% if pd.file_path %}<a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}" target="_blank" class="text-decoration-none fw-semibold">{{ pd.original_name }} &#8599;</a>{% else %}<span class="fw-semibold">{{ pd.original_name }}</span>{% endif %}
+                  </div>
+                  <table class="table table-sm field-table mb-0">
+                    {% macro qrow_sp(label, field_key, parsed_val, input_type) %}
+                    {% set ov_val = w2_ov.get('spouse',{}).get(field_key) %}
+                    {% set display = ov_val if ov_val is not none else parsed_val %}
+                    <tr>
+                      <td class="text-muted" style="width:35%">{{ label }}</td>
+                      <td>
+                        <span class="w2-display {% if ov_val is not none %}text-primary fw-semibold{% endif %}">{{ display or '--' }}</span>
+                        <input type="{{ input_type or 'text' }}" name="sp_{{ field_key }}"
+                               value="{{ display or '' }}"
+                               data-parsed="{{ parsed_val or '' }}"
+                               class="w2-input form-control form-control-sm d-none">
+                      </td>
+                    </tr>
+                    {% endmacro %}
+                    {{ qrow_sp('Employer', 'employer_name', sp_w.get('employer_name'), 'text') }}
+                    {{ qrow_sp('EIN',      'employer_ein',  sp_w.get('employer_ein'),  'text') }}
+                    {{ qrow_sp('Employee', 'employee_name', sp_w.get('employee_name'), 'text') }}
+                    {% set sp_addr_parsed = (sp_w.get('employer_address','') ~ (', ' ~ sp_w.get('employer_city','') if sp_w.get('employer_city') else '') ~ (', ' ~ sp_w.get('employer_state','') if sp_w.get('employer_state') else '') ~ (' ' ~ sp_w.get('employer_zip','') if sp_w.get('employer_zip') else '')) | trim %}
+                    {{ qrow_sp('Address', 'employer_address_full', sp_addr_parsed, 'text') }}
+                  </table>
+                  {% else %}
+                  <p class="text-muted small fst-italic mb-0">No spouse W-2 uploaded.</p>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+
+          {# Wages & Withholding table #}
+          <div class="card shadow-sm">
+            <div class="card-header py-2 fw-semibold small" style="border-left:4px solid var(--bs-primary);">
+              Wages &amp; Withholding
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm field-table mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width:38%">Field</th>
+                    <th class="text-end">Taxpayer</th>
+                    {% if w2_sp_docs %}<th class="text-end">Spouse</th>{% endif %}
+                    <th class="text-end">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% macro w2row(label, field_key, tp_val, sp_val, tp_raw=none, sp_raw=none) %}
+                  {% set tp_ov = w2_ov.get('taxpayer', {}).get(field_key) is not none %}
+                  {% set sp_ov = w2_ov.get('spouse',   {}).get(field_key) is not none %}
+                  <tr>
+                    <td>{{ label }}</td>
+                    <td class="text-end">
+                      <span class="w2-display amount {% if tp_ov %}text-primary fw-semibold{% endif %}">{{ tp_val | fmt_amount }}</span>
+                      <input type="number" name="tp_{{ field_key }}" step="0.01"
+                             value="{{ tp_val if tp_val is not none else '' }}"
+                             data-parsed="{{ tp_raw if tp_raw is not none else '' }}"
+                             class="w2-input form-control form-control-sm text-end d-none" style="width:130px;margin-left:auto">
+                    </td>
+                    {% if w2_sp_docs %}
+                    <td class="text-end">
+                      <span class="w2-display amount {% if sp_ov %}text-primary fw-semibold{% endif %}">{{ sp_val | fmt_amount }}</span>
+                      <input type="number" name="sp_{{ field_key }}" step="0.01"
+                             value="{{ sp_val if sp_val is not none else '' }}"
+                             data-parsed="{{ sp_raw if sp_raw is not none else '' }}"
+                             class="w2-input form-control form-control-sm text-end d-none" style="width:130px;margin-left:auto">
+                    </td>
+                    {% endif %}
+                    <td class="text-end amount fw-semibold">
+                      {% if tp_val is not none or sp_val is not none %}{{ ((tp_val or 0) + (sp_val or 0)) | fmt_amount }}{% else %}—{% endif %}
+                    </td>
+                  </tr>
+                  {% endmacro %}
+                  {{ w2row('Box 1 — Wages',            'box1_wages',           tp_box1,  sp_box1,  tp.box1,  sp.box1)  }}
+                  {{ w2row('Box 2 — Federal Withheld', 'box2_fed_withholding', tp_box2,  sp_box2,  tp.box2,  sp.box2)  }}
+                  {{ w2row('Box 3 — SS Wages',         'box3_ss_wages',        tp_box3,  sp_box3,  tp.box3,  sp.box3)  }}
+                  {{ w2row('Box 4 — SS Tax',           'box4_ss_tax',          tp_box4,  sp_box4,  tp.box4,  sp.box4)  }}
+                  {{ w2row('Box 5 — Medicare Wages',   'box5_medicare_wages',  tp_box5,  sp_box5,  tp.box5,  sp.box5)  }}
+                  {{ w2row('Box 6 — Medicare Tax',     'box6_medicare_tax',    tp_box6,  sp_box6,  tp.box6,  sp.box6)  }}
+                  <tr>
+                    <td>Box 13 — Retirement Plan</td>
+                    <td class="text-end">{{ 'Yes' if tp.retire else 'No' }}</td>
+                    {% if w2_sp_docs %}<td class="text-end">{{ 'Yes' if sp.retire else 'No' }}</td>{% endif %}
+                    <td class="text-end text-muted">—</td>
+                  </tr>
+                  {{ w2row('Box 16 — State Wages', 'box16_state_wages', tp_box16, sp_box16, tp.box16, sp.box16) }}
+                  {{ w2row('Box 17 — State Tax',   'box17_state_tax',   tp_box17, sp_box17, tp.box17, sp.box17) }}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </form>
+        <script>
+        (function() {
+          var form      = document.getElementById('w2OverrideForm');
+          var editBtn   = document.getElementById('w2EditBtn');
+          var saveBtn   = document.getElementById('w2SaveBtn');
+          var cancelBtn = document.getElementById('w2CancelBtn');
+
+          function setEditing(on) {
+            form.querySelectorAll('.w2-display').forEach(function(el) { el.classList.toggle('d-none', on); });
+            form.querySelectorAll('.w2-input').forEach(function(el)   { el.classList.toggle('d-none', !on); });
+            editBtn.classList.toggle('d-none', on);
+            saveBtn.classList.toggle('d-none', !on);
+            cancelBtn.classList.toggle('d-none', !on);
+          }
+
+          form.addEventListener('submit', function() {
+            // Only save an override when the value actually differs from the parsed value.
+            // If the submitted value matches the parsed value, send empty string so the
+            // backend deletes any existing override (reverting to parsed data).
+            form.querySelectorAll('.w2-input[name]').forEach(function(inp) {
+              var parsed = inp.dataset.parsed !== undefined ? inp.dataset.parsed : '';
+              // Normalize: compare as trimmed strings (numeric inputs may vary by trailing zeros)
+              var submittedNum = parseFloat(inp.value);
+              var parsedNum    = parseFloat(parsed);
+              var sameNumeric  = inp.type === 'number' && !isNaN(submittedNum) && !isNaN(parsedNum) && submittedNum === parsedNum;
+              var sameText     = inp.type !== 'number' && inp.value.trim() === parsed.trim();
+              if (sameNumeric || sameText || (inp.value === '' && parsed === '')) {
+                inp.value = '';
+              }
+            });
+          });
+
+          editBtn.addEventListener('click', function() { setEditing(true); });
+          cancelBtn.addEventListener('click', function() { setEditing(false); });
+        })();
+        </script>
       </div>{# /panel-w2 #}
       {% endif %}
 
-      {# ════ 1099-B Panel ════ #}
+      {# ════ 1099-B / DIV / INT — shared brokerage form ════ #}
       {% if b1099_docs %}
+
+      {# Shared edit-state macros for brokerage panels.
+         Input names use ba_{upload_id}_{field_key} so the save route can key
+         overrides by person="acct_{upload_id}" without collisions. #}
+
+      {# brokerage_1099 overrides lookup shortcut #}
+      {% set b1099_ov = field_overrides.get('brokerage_1099', {}) %}
+
+      {# Build override field list for parse confirmation modal #}
+      {% set b1099_override_fields = [] %}
+      {% for person_key, person_fields in b1099_ov.items() %}
+        {% for f in person_fields.keys() %}{% if b1099_override_fields.append(person_key + '.' + f) %}{% endif %}{% endfor %}
+      {% endfor %}
+
+      {# Shared Edit/Save/Cancel form wraps all three brokerage panels #}
+      <form method="post"
+            action="{{ url_for('preparer.save_field_override_route', user_id=user.id, year=year) }}"
+            id="b1099OverrideForm">
+        <input type="hidden" name="doc_type" value="brokerage_1099">
+        <input type="hidden" name="active_panel" id="b1099ActivePanel" value="panel-1099b">
+
+      {# ════ 1099-B Panel ════ #}
       <div id="panel-1099b" class="extracted-panel d-none">
 
-        {# Per-document parse controls #}
+        {# Parse controls #}
         {% for pd in b1099_docs %}
         <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-white border rounded small">
           <span class="fw-semibold text-truncate" style="max-width:220px" title="{{ pd.original_name }}">{{ pd.original_name }}</span>
           <button type="button" class="btn btn-xs btn-outline-secondary ms-auto parse-btn"
                   data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}">&#8635; Parse</button>
+                  data-year="{{ year }}" data-doctype="brokerage_1099"
+                  data-overrides='{{ b1099_override_fields | tojson }}'>&#8635; Parse</button>
           <button type="button" class="btn btn-xs btn-outline-primary parse-btn"
                   data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}" data-ocr="1">OCR Parse</button>
+                  data-year="{{ year }}" data-ocr="1" data-doctype="brokerage_1099"
+                  data-overrides='{{ b1099_override_fields | tojson }}'>OCR Parse</button>
           {% if azure_configured %}
           <button type="button" class="btn btn-xs btn-outline-success azure-parse-btn"
                   data-url="{{ url_for('preparer.azure_enhance', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}">&#9889; Azure</button>
+                  data-year="{{ year }}" data-doctype="brokerage_1099"
+                  data-overrides='{{ b1099_override_fields | tojson }}'>&#9889; Azure</button>
           {% endif %}
           <span class="parser-status" id="parse-status-{{ pd.upload_id }}"></span>
         </div>
         {% endfor %}
+        <div class="d-flex justify-content-end mb-2 gap-1">
+          <button type="button" id="b1099EditBtn" class="btn btn-sm btn-outline-secondary">Edit</button>
+          <button type="submit" id="b1099SaveBtn" class="btn btn-sm btn-primary d-none">Save</button>
+          <button type="button" id="b1099CancelBtn" class="btn btn-sm btn-outline-secondary d-none">Cancel</button>
+        </div>
 
         {# Per-account summary #}
         <div class="card shadow-sm mb-3">
@@ -710,29 +867,45 @@
                 </tr>
               </thead>
               <tbody>
-                {# Macro for a b_summary dict field #}
+                {# Macro: b_summary nested field #}
                 {% macro bsum_row(label, key) %}
                 {% set rns = namespace(total=none) %}
                 <tr>
                   <td>{{ label }}</td>
                   {% for pd in b1099_docs %}
                     {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
-                    {% set val = b0.get('b_summary', {}).get(key) if b0 else none %}
-                    <td class="text-end amount">{{ val | fmt_amount }}</td>
+                    {% set parsed_val = b0.get('b_summary', {}).get(key) if b0 else none %}
+                    {% set ov_val = b1099_ov.get('acct_' ~ pd.upload_id | string, {}).get('bsum_' ~ key) %}
+                    {% set val = ov_val | float if ov_val is not none else parsed_val %}
+                    <td class="text-end {% if ov_val is not none %}text-primary fw-semibold{% endif %}">
+                      <span class="b1099-display amount">{{ val | fmt_amount }}</span>
+                      <input type="number" name="ba_{{ pd.upload_id }}_bsum_{{ key }}" step="0.01"
+                             value="{{ val if val is not none else '' }}"
+                             data-parsed="{{ parsed_val if parsed_val is not none else '' }}"
+                             class="b1099-input form-control form-control-sm text-end d-none" style="width:120px;margin-left:auto">
+                    </td>
                     {% if val is not none %}{% set rns.total = (rns.total or 0) + val %}{% endif %}
                   {% endfor %}
                   <td class="text-end amount fw-semibold">{{ rns.total | fmt_amount }}</td>
                 </tr>
                 {% endmacro %}
-                {# Macro for a top-level field on the brokerage_1099 object #}
+                {# Macro: top-level field on brokerage_1099 object #}
                 {% macro b1_row(label, key) %}
                 {% set rns = namespace(total=none) %}
                 <tr>
                   <td>{{ label }}</td>
                   {% for pd in b1099_docs %}
                     {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
-                    {% set val = b0.get(key) if b0 else none %}
-                    <td class="text-end amount">{{ val | fmt_amount }}</td>
+                    {% set parsed_val = b0.get(key) if b0 else none %}
+                    {% set ov_val = b1099_ov.get('acct_' ~ pd.upload_id | string, {}).get(key) %}
+                    {% set val = ov_val | float if ov_val is not none else parsed_val %}
+                    <td class="text-end {% if ov_val is not none %}text-primary fw-semibold{% endif %}">
+                      <span class="b1099-display amount">{{ val | fmt_amount }}</span>
+                      <input type="number" name="ba_{{ pd.upload_id }}_{{ key }}" step="0.01"
+                             value="{{ val if val is not none else '' }}"
+                             data-parsed="{{ parsed_val if parsed_val is not none else '' }}"
+                             class="b1099-input form-control form-control-sm text-end d-none" style="width:120px;margin-left:auto">
+                    </td>
                     {% if val is not none %}{% set rns.total = (rns.total or 0) + val %}{% endif %}
                   {% endfor %}
                   <td class="text-end amount fw-semibold">{{ rns.total | fmt_amount }}</td>
@@ -753,7 +926,7 @@
           </div>
         </div>
 
-        {# Individual transactions #}
+        {# Individual transactions (read-only) #}
         {% set any_trades = [] %}
         {% for pd in b1099_docs %}{% if pd.extracted_json.get('brokerage_1099_trades') %}{% if any_trades.append(1) %}{% endif %}{% endif %}{% endfor %}
         {% if any_trades %}
@@ -840,8 +1013,16 @@
                   <td>{{ label }}</td>
                   {% for pd in b1099_docs %}
                     {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
-                    {% set val = b0.get(key) if b0 else none %}
-                    <td class="text-end amount">{{ val | fmt_amount }}</td>
+                    {% set parsed_val = b0.get(key) if b0 else none %}
+                    {% set ov_val = b1099_ov.get('acct_' ~ pd.upload_id | string, {}).get(key) %}
+                    {% set val = ov_val | float if ov_val is not none else parsed_val %}
+                    <td class="text-end {% if ov_val is not none %}text-primary fw-semibold{% endif %}">
+                      <span class="b1099-display amount">{{ val | fmt_amount }}</span>
+                      <input type="number" name="ba_{{ pd.upload_id }}_{{ key }}" step="0.01"
+                             value="{{ val if val is not none else '' }}"
+                             data-parsed="{{ parsed_val if parsed_val is not none else '' }}"
+                             class="b1099-input form-control form-control-sm text-end d-none" style="width:120px;margin-left:auto">
+                    </td>
                     {% if val is not none %}{% set rns.total = (rns.total or 0) + val %}{% endif %}
                   {% endfor %}
                   <td class="text-end amount fw-semibold">{{ rns.total | fmt_amount }}</td>
@@ -889,8 +1070,16 @@
                   <td>{{ label }}</td>
                   {% for pd in b1099_docs %}
                     {% set b0 = pd.extracted_json.get('brokerage_1099', [{}])[0] if pd.extracted_json.get('brokerage_1099') else {} %}
-                    {% set val = b0.get(key) if b0 else none %}
-                    <td class="text-end amount">{{ val | fmt_amount }}</td>
+                    {% set parsed_val = b0.get(key) if b0 else none %}
+                    {% set ov_val = b1099_ov.get('acct_' ~ pd.upload_id | string, {}).get(key) %}
+                    {% set val = ov_val | float if ov_val is not none else parsed_val %}
+                    <td class="text-end {% if ov_val is not none %}text-primary fw-semibold{% endif %}">
+                      <span class="b1099-display amount">{{ val | fmt_amount }}</span>
+                      <input type="number" name="ba_{{ pd.upload_id }}_{{ key }}" step="0.01"
+                             value="{{ val if val is not none else '' }}"
+                             data-parsed="{{ parsed_val if parsed_val is not none else '' }}"
+                             class="b1099-input form-control form-control-sm text-end d-none" style="width:120px;margin-left:auto">
+                    </td>
                     {% if val is not none %}{% set rns.total = (rns.total or 0) + val %}{% endif %}
                   {% endfor %}
                   <td class="text-end amount fw-semibold">{{ rns.total | fmt_amount }}</td>
@@ -903,31 +1092,80 @@
           </div>
         </div>
       </div>{# /panel-1099int #}
+
+      </form>{# /b1099OverrideForm #}
+      <script>
+      (function() {
+        var form      = document.getElementById('b1099OverrideForm');
+        var editBtn   = document.getElementById('b1099EditBtn');
+        var saveBtn   = document.getElementById('b1099SaveBtn');
+        var cancelBtn = document.getElementById('b1099CancelBtn');
+
+        function setEditing(on) {
+          form.querySelectorAll('.b1099-display').forEach(function(el) { el.classList.toggle('d-none', on); });
+          form.querySelectorAll('.b1099-input').forEach(function(el)   { el.classList.toggle('d-none', !on); });
+          editBtn.classList.toggle('d-none', on);
+          saveBtn.classList.toggle('d-none', !on);
+          cancelBtn.classList.toggle('d-none', !on);
+        }
+
+        form.addEventListener('submit', function() {
+          form.querySelectorAll('.b1099-input[name]').forEach(function(inp) {
+            var parsed = inp.dataset.parsed !== undefined ? inp.dataset.parsed : '';
+            var submittedNum = parseFloat(inp.value);
+            var parsedNum    = parseFloat(parsed);
+            var sameNumeric  = !isNaN(submittedNum) && !isNaN(parsedNum) && submittedNum === parsedNum;
+            if (sameNumeric || (inp.value === '' && parsed === '')) {
+              inp.value = '';
+            }
+          });
+        });
+
+        if (editBtn)   editBtn.addEventListener('click',   function() { setEditing(true); });
+        if (cancelBtn) cancelBtn.addEventListener('click', function() { setEditing(false); });
+      })();
+      </script>
+
       {% endif %}{# /b1099_docs #}
 
       {# ════ Form 1098 Panel ════ #}
       {% if f1098_docs %}
       <div id="panel-1098" class="extracted-panel d-none">
         {# Per-document parse controls #}
+        {% set f1098_override_fields = [] %}
+        {% for person_key, person_fields in field_overrides.get('form_1098', {}).items() %}
+          {% for f in person_fields.keys() %}{% if f1098_override_fields.append(person_key + '.' + f) %}{% endif %}{% endfor %}
+        {% endfor %}
         {% for pd in f1098_docs %}
         <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-white border rounded small">
           <span class="fw-semibold text-truncate" style="max-width:220px" title="{{ pd.original_name }}">{{ pd.original_name }}</span>
           <button type="button" class="btn btn-xs btn-outline-secondary ms-auto parse-btn"
                   data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}">&#8635; Parse</button>
+                  data-year="{{ year }}" data-doctype="form_1098"
+                  data-overrides='{{ f1098_override_fields | tojson }}'>&#8635; Parse</button>
           <button type="button" class="btn btn-xs btn-outline-primary parse-btn"
                   data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}" data-ocr="1">OCR Parse</button>
+                  data-year="{{ year }}" data-ocr="1" data-doctype="form_1098"
+                  data-overrides='{{ f1098_override_fields | tojson }}'>OCR Parse</button>
           {% if azure_configured %}
           <button type="button" class="btn btn-xs btn-outline-success azure-parse-btn"
                   data-url="{{ url_for('preparer.azure_enhance', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}">&#9889; Azure</button>
+                  data-year="{{ year }}" data-doctype="form_1098"
+                  data-overrides='{{ f1098_override_fields | tojson }}'>&#9889; Azure</button>
           {% endif %}
           <span class="parser-status" id="parse-status-{{ pd.upload_id }}"></span>
         </div>
         {% endfor %}
         {% for pd in f1098_docs %}
-        <div class="card shadow-sm mb-2">
+        {% set f1098_pd_ov = field_overrides.get('form_1098', {}).get('doc_' ~ pd.upload_id | string, {}) %}
+        {% set f0 = pd.extracted_json.get('form_1098', [{}])[0] if pd.extracted_json.get('form_1098') else {} %}
+        <form method="post"
+              action="{{ url_for('preparer.save_field_override_route', user_id=user.id, year=year) }}"
+              id="f1098Form-{{ pd.upload_id }}"
+              class="card shadow-sm mb-2">
+          <input type="hidden" name="doc_type" value="form_1098">
+          <input type="hidden" name="person" value="doc_{{ pd.upload_id }}">
+          <input type="hidden" name="active_panel" value="panel-1098">
           <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
             {% if pd.file_path %}
             <a href="{{ url_for('preparer.view_upload', upload_id=pd.upload_id) }}"
@@ -948,24 +1186,90 @@
             {% if pd.flags_json %}
             <span class="badge bg-warning text-dark">{{ pd.flags_json | length }} flag{{ 's' if pd.flags_json | length != 1 }}</span>
             {% endif %}
+            <button type="button" class="btn btn-xs btn-outline-secondary f1098-edit-btn"
+                    data-form="f1098Form-{{ pd.upload_id }}">Edit</button>
+            <button type="submit" class="btn btn-xs btn-primary f1098-save-btn d-none"
+                    data-form="f1098Form-{{ pd.upload_id }}">Save</button>
+            <button type="button" class="btn btn-xs btn-outline-secondary f1098-cancel-btn d-none"
+                    data-form="f1098Form-{{ pd.upload_id }}">Cancel</button>
           </div>
           <div class="card-body py-2">
-            {% for f in pd.extracted_json.get('form_1098', []) %}
             <table class="table table-sm field-table" style="max-width:480px">
-              <tr><th colspan="2" class="table-light small">Lender: {{ f.get('lender_name') or '--' }}</th></tr>
-              <tr><td>Mortgage Interest</td><td class="amount">{{ f.get('mortgage_interest_received') | fmt_amount }}</td></tr>
-              <tr><td>Points Paid</td><td class="amount">{{ f.get('points_paid') | fmt_amount }}</td></tr>
-              <tr><td>Mortgage Insurance Premiums</td><td class="amount">{{ f.get('mortgage_insurance_premiums') | fmt_amount }}</td></tr>
-              <tr><td>Real Estate Taxes</td><td class="amount">{{ f.get('real_estate_taxes') | fmt_amount }}</td></tr>
-              <tr><td>Outstanding Principal</td><td class="amount">{{ f.get('mortgage_principal_outstanding') | fmt_amount }}</td></tr>
-              {% if f.get('borrower_names') %}
-              <tr><td>Borrowers</td><td>{{ f.get('borrower_names') | join(', ') }}</td></tr>
+              {# Lender name (text) #}
+              {% set lender_ov = f1098_pd_ov.get('lender_name') %}
+              {% set lender_display = lender_ov if lender_ov is not none else f0.get('lender_name') %}
+              <tr>
+                <th colspan="2" class="table-light small">
+                  <span class="f1098-display {% if lender_ov is not none %}text-primary fw-semibold{% endif %}">Lender: {{ lender_display or '--' }}</span>
+                  <input type="text" name="tp_lender_name"
+                         value="{{ lender_display or '' }}"
+                         data-parsed="{{ f0.get('lender_name') or '' }}"
+                         class="f1098-input form-control form-control-sm d-none">
+                </th>
+              </tr>
+              {# Numeric fields — inline to avoid Jinja macro scope issues #}
+              {% set _rows = [
+                ('Mortgage Interest',           'mortgage_interest_received'),
+                ('Points Paid',                 'points_paid'),
+                ('Mortgage Insurance Premiums', 'mortgage_insurance_premiums'),
+                ('Real Estate Taxes',           'real_estate_taxes'),
+                ('Outstanding Principal',       'mortgage_principal_outstanding'),
+              ] %}
+              {% for row_label, row_key in _rows %}
+              {% set row_ov  = f1098_pd_ov.get(row_key) %}
+              {% set row_parsed = f0.get(row_key) %}
+              {% set row_display = row_ov | float if row_ov is not none else row_parsed %}
+              <tr>
+                <td style="width:55%">{{ row_label }}</td>
+                <td class="text-end">
+                  <span class="f1098-display amount {% if row_ov is not none %}text-primary fw-semibold{% endif %}">{{ row_display | fmt_amount }}</span>
+                  <input type="number" name="tp_{{ row_key }}" step="0.01"
+                         value="{{ row_display if row_display is not none else '' }}"
+                         data-parsed="{{ row_parsed if row_parsed is not none else '' }}"
+                         class="f1098-input form-control form-control-sm text-end d-none" style="width:140px;margin-left:auto">
+                </td>
+              </tr>
+              {% endfor %}
+              {% if f0.get('borrower_names') %}
+              <tr><td>Borrowers</td><td>{{ f0.get('borrower_names') | join(', ') }}</td></tr>
               {% endif %}
             </table>
-            {% endfor %}
           </div>
-        </div>
+        </form>
         {% endfor %}
+        <script>
+        (function() {
+          function setF1098Editing(formId, on) {
+            var form = document.getElementById(formId);
+            if (!form) return;
+            form.querySelectorAll('.f1098-display').forEach(function(el) { el.classList.toggle('d-none', on); });
+            form.querySelectorAll('.f1098-input').forEach(function(el)   { el.classList.toggle('d-none', !on); });
+            form.querySelectorAll('.f1098-edit-btn').forEach(function(el)   { el.classList.toggle('d-none', on); });
+            form.querySelectorAll('.f1098-save-btn').forEach(function(el)   { el.classList.toggle('d-none', !on); });
+            form.querySelectorAll('.f1098-cancel-btn').forEach(function(el) { el.classList.toggle('d-none', !on); });
+          }
+          document.querySelectorAll('.f1098-edit-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() { setF1098Editing(btn.dataset.form, true); });
+          });
+          document.querySelectorAll('.f1098-cancel-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() { setF1098Editing(btn.dataset.form, false); });
+          });
+          document.querySelectorAll('[id^="f1098Form-"]').forEach(function(form) {
+            form.addEventListener('submit', function() {
+              form.querySelectorAll('.f1098-input[name]').forEach(function(inp) {
+                var parsed = inp.dataset.parsed !== undefined ? inp.dataset.parsed : '';
+                var submittedNum = parseFloat(inp.value);
+                var parsedNum    = parseFloat(parsed);
+                var sameNumeric  = inp.type === 'number' && !isNaN(submittedNum) && !isNaN(parsedNum) && submittedNum === parsedNum;
+                var sameText     = inp.type !== 'number' && inp.value.trim() === parsed.trim();
+                if (sameNumeric || sameText || (inp.value === '' && parsed === '')) {
+                  inp.value = '';
+                }
+              });
+            });
+          });
+        })();
+        </script>
       </div>{# /panel-1098 #}
       {% endif %}
 
@@ -973,15 +1277,21 @@
       {% if py_docs %}
       <div id="panel-prior-year" class="extracted-panel d-none">
         {# Per-document parse controls #}
+        {% set py_override_fields = [] %}
+        {% for person_key, person_fields in field_overrides.get('prior_year_return', {}).items() %}
+          {% for f in person_fields.keys() %}{% if py_override_fields.append(person_key + '.' + f) %}{% endif %}{% endfor %}
+        {% endfor %}
         {% for pd in py_docs %}
         <div class="d-flex align-items-center gap-2 mb-2 p-2 bg-white border rounded small">
           <span class="fw-semibold text-truncate" style="max-width:220px" title="{{ pd.original_name }}">{{ pd.original_name }}</span>
           <button type="button" class="btn btn-xs btn-outline-secondary ms-auto parse-btn"
                   data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}">&#8635; Parse</button>
+                  data-year="{{ year }}" data-doctype="prior_year_return"
+                  data-overrides='{{ py_override_fields | tojson }}'>&#8635; Parse</button>
           <button type="button" class="btn btn-xs btn-outline-primary parse-btn"
                   data-url="{{ url_for('preparer.reparse', user_id=user.id, upload_id=pd.upload_id) }}"
-                  data-year="{{ year }}" data-ocr="1">OCR Parse</button>
+                  data-year="{{ year }}" data-ocr="1" data-doctype="prior_year_return"
+                  data-overrides='{{ py_override_fields | tojson }}'>OCR Parse</button>
           <span class="parser-status" id="parse-status-{{ pd.upload_id }}"></span>
         </div>
         {% endfor %}
@@ -1364,18 +1674,36 @@
     <script>
     (function() {
       var pills = document.querySelectorAll('#formTypePills .nav-link');
+
+      function activatePanel(panelId) {
+        pills.forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.extracted-panel').forEach(function(p) { p.classList.add('d-none'); });
+        var targetBtn = null;
+        pills.forEach(function(b) { if (b.dataset.panel === panelId) targetBtn = b; });
+        if (targetBtn) targetBtn.classList.add('active');
+        var panel = document.getElementById(panelId);
+        if (panel) panel.classList.remove('d-none');
+        // Keep brokerage form's active_panel in sync
+        var apInput = document.getElementById('b1099ActivePanel');
+        if (apInput) apInput.value = panelId;
+      }
+
       pills.forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          pills.forEach(function(b) { b.classList.remove('active'); });
-          document.querySelectorAll('.extracted-panel').forEach(function(p) { p.classList.add('d-none'); });
-          btn.classList.add('active');
-          var panel = document.getElementById(btn.dataset.panel);
-          if (panel) panel.classList.remove('d-none');
-        });
+        btn.addEventListener('click', function() { activatePanel(btn.dataset.panel); });
       });
 
+      // On load: if ?panel= query param present, activate that panel
+      var urlPanel = new URLSearchParams(window.location.search).get('panel');
+      if (urlPanel && document.getElementById(urlPanel)) {
+        activatePanel(urlPanel);
+        // Clean the query param from the URL without triggering a reload
+        var cleanUrl = window.location.pathname + window.location.hash;
+        history.replaceState(null, '', cleanUrl);
+      }
+
       // Parse / Azure buttons with inline status
-      function runParser(btn, url, year, ocr) {
+      // clearFields: array of "person.field" strings to delete before reparsing (empty = keep all overrides)
+      function runParser(btn, url, year, ocr, clearFields, docType) {
         var statusEl = btn.closest('.d-flex').querySelector('.parser-status');
         if (!statusEl) return;
         btn.disabled = true;
@@ -1384,6 +1712,10 @@
 
         var body = new URLSearchParams({year: year});
         if (ocr) body.append('ocr', '1');
+        if (docType) body.append('doc_type', docType);
+        if (clearFields && clearFields.length > 0) {
+          clearFields.forEach(function(f) { body.append('clear_field', f); });
+        }
 
         fetch(url, {
           method: 'POST',
@@ -1394,7 +1726,13 @@
           if (r.ok) {
             statusEl.textContent = '\u2713 Done \u2014 reloading\u2026';
             statusEl.className = 'parser-status success';
-            setTimeout(function() { window.location.reload(); }, 800);
+            setTimeout(function() {
+              var activeBtn = document.querySelector('#formTypePills .nav-link.active');
+              var panelId = activeBtn ? activeBtn.dataset.panel : '';
+              var params = new URLSearchParams(window.location.search);
+              if (panelId) params.set('panel', panelId); else params.delete('panel');
+              window.location.href = window.location.pathname + '?' + params.toString() + '#tab-data';
+            }, 800);
           } else {
             statusEl.textContent = 'Error (HTTP ' + r.status + ')';
             statusEl.className = 'parser-status error';
@@ -1407,15 +1745,87 @@
         .finally(function() { btn.disabled = false; });
       }
 
+      // Reparse confirmation modal logic — lazy init to avoid crashing the IIFE on load
+      var _reparseModal = null;
+      var _pendingParseBtn = null;
+
+      function getReparseModal() {
+        if (!_reparseModal) {
+          var el = document.getElementById('reparseConfirmModal');
+          if (el) _reparseModal = new bootstrap.Modal(el);
+        }
+        return _reparseModal;
+      }
+
+      function launchParseWithOverrideCheck(btn, isAzure) {
+        var overrides = [];
+        try { overrides = JSON.parse(btn.dataset.overrides || '[]'); } catch(e) {}
+        if (overrides.length === 0) {
+          runParser(btn, btn.dataset.url, btn.dataset.year, isAzure ? false : btn.dataset.ocr, []);
+          return;
+        }
+        // Build checkbox list — unchecked = keep override, checked = overwrite with parsed
+        var list = document.getElementById('reparseOverrideList');
+        if (list) {
+          list.innerHTML = '';
+          overrides.forEach(function(f) {
+            var label = document.createElement('label');
+            label.className = 'd-flex align-items-center gap-2 py-1 px-1 rounded';
+            label.style.cursor = 'pointer';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = f;
+            cb.className = 'form-check-input mt-0 flex-shrink-0';
+            var txt = document.createElement('span');
+            txt.textContent = f.replace('.', ' → ').replace(/_/g, ' ');
+            label.appendChild(cb);
+            label.appendChild(txt);
+            list.appendChild(label);
+          });
+        }
+        _pendingParseBtn = {btn: btn, isAzure: isAzure};
+        var m = getReparseModal();
+        if (m) m.show();
+      }
+
+      var selectAllBtn  = document.getElementById('reparseSelectAll');
+      var selectNoneBtn = document.getElementById('reparseSelectNone');
+      var applyBtn      = document.getElementById('reparseApplyBtn');
+
+      if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', function() {
+          document.querySelectorAll('#reparseOverrideList input[type=checkbox]').forEach(function(cb) { cb.checked = true; });
+        });
+      }
+      if (selectNoneBtn) {
+        selectNoneBtn.addEventListener('click', function() {
+          document.querySelectorAll('#reparseOverrideList input[type=checkbox]').forEach(function(cb) { cb.checked = false; });
+        });
+      }
+      if (applyBtn) {
+        applyBtn.addEventListener('click', function() {
+          var m = getReparseModal(); if (m) m.hide();
+          if (!_pendingParseBtn) return;
+          var b = _pendingParseBtn.btn, az = _pendingParseBtn.isAzure;
+          _pendingParseBtn = null;
+          // Collect field keys the user wants to overwrite (checked boxes)
+          var toOverwrite = [];
+          document.querySelectorAll('#reparseOverrideList input[type=checkbox]:checked').forEach(function(cb) {
+            toOverwrite.push(cb.value);
+          });
+          runParser(b, b.dataset.url, b.dataset.year, az ? false : b.dataset.ocr, toOverwrite, b.dataset.doctype);
+        });
+      }
+
       document.querySelectorAll('.parse-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
-          runParser(btn, btn.dataset.url, btn.dataset.year, btn.dataset.ocr);
+          launchParseWithOverrideCheck(btn, false);
         });
       });
 
       document.querySelectorAll('.azure-parse-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
-          runParser(btn, btn.dataset.url, btn.dataset.year, false);
+          launchParseWithOverrideCheck(btn, true);
         });
       });
     })();

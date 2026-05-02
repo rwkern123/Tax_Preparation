@@ -16,6 +16,10 @@ from .database import (
     get_manual_entries,
     save_manual_entry,
     delete_manual_entry,
+    get_field_overrides,
+    save_field_override,
+    delete_field_overrides_for_doctype,
+    delete_field_override_by_person_field,
 )
 
 preparer_bp = Blueprint(
@@ -300,6 +304,7 @@ def client_detail(user_id: int):
     from .form_1040_filler import aggregate_1040_data
     manual_entries = get_manual_entries(_preparer_db(), user_id, year)
     form_1040_data = aggregate_1040_data(parsed_docs, user, year, manual_entries=manual_entries)
+    field_overrides = get_field_overrides(_preparer_db(), user_id, year)
 
     return render_template(
         "preparer/client_detail.html",
@@ -317,15 +322,28 @@ def client_detail(user_id: int):
         azure_configured=azure_configured,
         form_1040_data=form_1040_data,
         manual_entries=manual_entries,
+        field_overrides=field_overrides,
     )
+
+
+def _apply_clear_fields(db_path: str, user_id: int, year: int, doc_type: str, clear_fields: list[str]) -> None:
+    """Delete specific field overrides from 'person.field' strings sent by the UI."""
+    for pf in clear_fields:
+        if "." in pf:
+            person, field = pf.split(".", 1)
+            delete_field_override_by_person_field(db_path, user_id, year, doc_type, person, field)
 
 
 @preparer_bp.route("/client/<int:user_id>/reparse/<int:upload_id>", methods=["POST"])
 @login_required
 def reparse(user_id: int, upload_id: int):
     use_ocr = request.form.get("ocr") == "1"
-    reparse_document(_preparer_db(), upload_id, use_ocr=use_ocr)
     year = int(request.form.get("year", _tax_year_context()["current_year"]))
+    doc_type = request.form.get("doc_type", "")
+    clear_fields = request.form.getlist("clear_field")
+    if clear_fields and doc_type:
+        _apply_clear_fields(_preparer_db(), user_id, year, doc_type, clear_fields)
+    reparse_document(_preparer_db(), upload_id, use_ocr=use_ocr)
     flash("Document re-parsed.", "success")
     return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
 
@@ -338,12 +356,16 @@ def azure_enhance(user_id: int, upload_id: int):
     endpoint = cfg.get("azure_endpoint", "")
     api_key  = cfg.get("azure_api_key", "")
     year     = int(request.form.get("year", _tax_year_context()["current_year"]))
+    doc_type = request.form.get("doc_type", "")
+    clear_fields = request.form.getlist("clear_field")
 
     if not (cfg.get("azure_enabled") and endpoint and api_key):
         flash("Azure is not configured. Please update Settings first.", "error")
         return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
 
     try:
+        if clear_fields and doc_type:
+            _apply_clear_fields(_preparer_db(), user_id, year, doc_type, clear_fields)
         reparse_document_azure(_preparer_db(), upload_id, endpoint=endpoint, api_key=api_key)
         flash("Document enhanced with Azure Document Intelligence.", "success")
     except Exception as exc:
@@ -665,6 +687,32 @@ def import_clients():
     else:
         flash(msg, "success")
     return redirect(url_for("preparer.client_list"))
+
+
+@preparer_bp.route("/client/<int:user_id>/field-override/<int:year>", methods=["POST"])
+@login_required
+def save_field_override_route(user_id: int, year: int):
+    doc_type = request.form.get("doc_type", "w2").strip()
+    # Optional person override (used by 1098 per-lender forms and brokerage per-account forms)
+    person_override = request.form.get("person", "").strip()
+    for key, raw in request.form.items():
+        if key.startswith("tp_"):
+            field = key[3:]
+            person = person_override or "taxpayer"
+            save_field_override(_preparer_db(), user_id, year, doc_type, person, field, raw.strip() or None)
+        elif key.startswith("sp_"):
+            field = key[3:]
+            save_field_override(_preparer_db(), user_id, year, doc_type, "spouse", field, raw.strip() or None)
+        elif key.startswith("ba_"):
+            # ba_{upload_id}_{field_key} — per-account brokerage override
+            rest = key[3:]
+            uid_part, field = rest.split("_", 1)
+            if uid_part.isdigit():
+                person = f"acct_{uid_part}"
+                save_field_override(_preparer_db(), user_id, year, doc_type, person, field, raw.strip() or None)
+    active_panel = request.form.get("active_panel", "").strip()
+    extra = {"panel": active_panel} if active_panel else {}
+    return redirect(url_for("preparer.client_detail", user_id=user_id, year=year, **extra) + "#tab-data")
 
 
 @preparer_bp.route("/client/<int:user_id>/manual-entry/<int:year>", methods=["POST"])

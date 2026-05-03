@@ -22,21 +22,7 @@
     });
   }
 
-  // ── 2. Prior-year compare selector ───────────────────────────────────────
-  var compareSelect = document.getElementById('compare-year-select');
-  if (compareSelect) {
-    compareSelect.addEventListener('change', function () {
-      var url = new URL(window.location.href);
-      if (this.value) {
-        url.searchParams.set('compare_year', this.value);
-      } else {
-        url.searchParams.delete('compare_year');
-      }
-      window.location.href = url.toString();
-    });
-  }
-
-  // ── 3. Confidence bar coloring ────────────────────────────────────────────
+  // ── 2. Confidence bar coloring ────────────────────────────────────────────
   document.querySelectorAll('.conf-bar[data-conf]').forEach(function (bar) {
     var conf = parseFloat(bar.getAttribute('data-conf'));
     if (conf < 0.30) {

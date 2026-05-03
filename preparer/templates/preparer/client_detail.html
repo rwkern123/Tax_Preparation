@@ -12,18 +12,6 @@
   <span class="badge bg-secondary text-capitalize">{{ user.filing_status | replace('_', ' ') }}</span>
   <span class="text-muted small">TY {{ year }}</span>
 
-  {# Prior-year compare selector #}
-  <div class="ms-auto d-flex align-items-center gap-2">
-    <label class="small text-muted mb-0">Compare with:</label>
-    <select id="compare-year-select" class="form-select form-select-sm" style="width:120px">
-      <option value="">-- none --</option>
-      {% for y in tax_years %}
-        {% if y != year %}
-        <option value="{{ y }}" {% if compare_year == y %}selected{% endif %}>{{ y }}</option>
-        {% endif %}
-      {% endfor %}
-    </select>
-  </div>
 </div>
 
 {# Summary chips #}
@@ -69,11 +57,9 @@
       {% endif %}
     </button>
   </li>
-  {% if yoy_rows %}
   <li class="nav-item">
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-yoy">Year-over-Year</button>
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-taxcalc">Tax Calculator</button>
   </li>
-  {% endif %}
   <li class="nav-item">
     <button class="nav-link" id="taxReturnTabBtn" data-bs-toggle="tab" data-bs-target="#tab-taxreturn">Tax Return</button>
   </li>
@@ -589,6 +575,11 @@
         {% set sp_box6  = w2_ov.get('spouse',{}).get('box6_medicare_tax')      | float if w2_ov.get('spouse',{}).get('box6_medicare_tax')      is not none else sp.box6  %}
         {% set sp_box16 = w2_ov.get('spouse',{}).get('box16_state_wages')      | float if w2_ov.get('spouse',{}).get('box16_state_wages')      is not none else sp.box16 %}
         {% set sp_box17 = w2_ov.get('spouse',{}).get('box17_state_tax')        | float if w2_ov.get('spouse',{}).get('box17_state_tax')        is not none else sp.box17 %}
+        {# Box 13 boolean overrides: override value is "true"/"false"; fall back to parsed #}
+        {% set tp_retire_ov = w2_ov.get('taxpayer',{}).get('box13_retirement_plan') %}
+        {% set sp_retire_ov = w2_ov.get('spouse',{}).get('box13_retirement_plan') %}
+        {% set tp_retire = (tp_retire_ov == 'true') if tp_retire_ov is not none else tp.retire %}
+        {% set sp_retire = (sp_retire_ov == 'true') if sp_retire_ov is not none else sp.retire %}
 
         {# Qualitative field helpers: override wins, else first parsed doc value #}
         {% set tp_w = (w2_tp_docs[0].extracted_json.get('w2', [{}])[0]) if w2_tp_docs else {} %}
@@ -732,10 +723,26 @@
                   {{ w2row('Box 4 — SS Tax',           'box4_ss_tax',          tp_box4,  sp_box4,  tp.box4,  sp.box4)  }}
                   {{ w2row('Box 5 — Medicare Wages',   'box5_medicare_wages',  tp_box5,  sp_box5,  tp.box5,  sp.box5)  }}
                   {{ w2row('Box 6 — Medicare Tax',     'box6_medicare_tax',    tp_box6,  sp_box6,  tp.box6,  sp.box6)  }}
+                  {% set tp_ret_ov = w2_ov.get('taxpayer',{}).get('box13_retirement_plan') is not none %}
+                  {% set sp_ret_ov = w2_ov.get('spouse',{}).get('box13_retirement_plan') is not none %}
                   <tr>
                     <td>Box 13 — Retirement Plan</td>
-                    <td class="text-end">{{ 'Yes' if tp.retire else 'No' }}</td>
-                    {% if w2_sp_docs %}<td class="text-end">{{ 'Yes' if sp.retire else 'No' }}</td>{% endif %}
+                    <td class="text-end">
+                      <span class="w2-display {% if tp_ret_ov %}text-primary fw-semibold{% endif %}">{{ 'Yes' if tp_retire else 'No' }}</span>
+                      <select name="tp_box13_retirement_plan" data-parsed="{{ 'true' if tp.retire else 'false' }}" class="w2-input form-select form-select-sm d-none" style="width:90px;margin-left:auto">
+                        <option value="true"  {% if tp_retire %}selected{% endif %}>Yes</option>
+                        <option value="false" {% if not tp_retire %}selected{% endif %}>No</option>
+                      </select>
+                    </td>
+                    {% if w2_sp_docs %}
+                    <td class="text-end">
+                      <span class="w2-display {% if sp_ret_ov %}text-primary fw-semibold{% endif %}">{{ 'Yes' if sp_retire else 'No' }}</span>
+                      <select name="sp_box13_retirement_plan" data-parsed="{{ 'true' if sp.retire else 'false' }}" class="w2-input form-select form-select-sm d-none" style="width:90px;margin-left:auto">
+                        <option value="true"  {% if sp_retire %}selected{% endif %}>Yes</option>
+                        <option value="false" {% if not sp_retire %}selected{% endif %}>No</option>
+                      </select>
+                    </td>
+                    {% endif %}
                     <td class="text-end text-muted">—</td>
                   </tr>
                   {{ w2row('Box 16 — State Wages', 'box16_state_wages', tp_box16, sp_box16, tp.box16, sp.box16) }}
@@ -1864,48 +1871,6 @@
 
   </div>
 
-  {# ════════════════════════════════════════ TAB 4: Year-over-Year ════ #}
-  {% if yoy_rows %}
-  <div class="tab-pane fade" id="tab-yoy">
-    <h6 class="text-muted mb-3 small text-uppercase fw-semibold">
-      {{ year }} vs {{ compare_year }}
-      <span class="fw-normal ms-2" style="text-transform:none">Fields with &gt;20% change are highlighted</span>
-    </h6>
-    <div class="card shadow-sm" style="max-width:640px">
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead class="table-dark">
-            <tr>
-              <th>Field</th>
-              <th class="text-end">{{ year }}</th>
-              <th class="text-end">{{ compare_year }}</th>
-              <th class="text-end">Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in yoy_rows %}
-            <tr class="{{ 'table-warning' if row.highlight }}">
-              <td>{{ row.label }}</td>
-              <td class="text-end">{{ row.current | fmt_amount if row.current is not none else '--' }}</td>
-              <td class="text-end">{{ row.prior | fmt_amount if row.prior is not none else '--' }}</td>
-              <td class="text-end">
-                {% if row.delta_pct is not none %}
-                  <span class="{{ 'text-danger' if row.delta_pct < -0.20 else ('text-success' if row.delta_pct > 0.20 else '') }}">
-                    {{ '%+.1f%%' | format(row.delta_pct * 100) }}
-                  </span>
-                {% else %}
-                  --
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
   {# ════════════════════════════════════════ TAB: Questionnaire ════ #}
   <div class="tab-pane fade" id="tab-questionnaire">
     <div class="mb-3">
@@ -1966,6 +1931,175 @@
     {% endif %}
   </div>
 
+  {# ════════════════════════════════════════ TAB: Tax Calculator ════ #}
+  <div class="tab-pane fade" id="tab-taxcalc">
+
+    {% set calc_cols = year_columns | selectattr('tax_estimate') | list %}
+    {% if not calc_cols %}
+      <div class="alert alert-info">No tax estimate data available. Parse documents first.</div>
+    {% else %}
+
+      {# Filing status / header row #}
+      <div class="card shadow-sm mb-3">
+        <div class="card-header py-2 fw-semibold small">Federal Tax Estimate</div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th style="min-width:240px">Line / Description</th>
+                {% for col in calc_cols %}
+                <th class="text-end {{ 'fw-bold' if col.is_current }}" style="min-width:120px">
+                  {{ col.tax_estimate.tax_year }}{% if col.is_current %} <span class="badge bg-primary ms-1" style="font-size:.65rem">Current</span>{% endif %}
+                  <div class="text-muted fw-normal" style="font-size:.7rem">{{ col.tax_estimate.filing_status }}</div>
+                </th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody class="small">
+
+              {# ── Income ── #}
+              <tr class="table-secondary"><td class="fw-semibold" colspan="{{ calc_cols | length + 1 }}">Income</td></tr>
+              <tr>
+                <td>W-2 Wages</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.w2_wages) if col.tax_estimate.w2_wages else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Taxable Interest</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.taxable_interest) if col.tax_estimate.taxable_interest else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Ordinary Dividends</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.ordinary_dividends) if col.tax_estimate.ordinary_dividends else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Cap. Gains — Short Term</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.short_term_cap_gains) if col.tax_estimate.short_term_cap_gains else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Cap. Gains — Long Term</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.long_term_cap_gains) if col.tax_estimate.long_term_cap_gains else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>IRA / Pension</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.ira_pension_taxable) if col.tax_estimate.ira_pension_taxable else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Social Security (taxable)</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.ss_benefits_taxable) if col.tax_estimate.ss_benefits_taxable else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Schedule C / SE</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.schedule_c_net) if col.tax_estimate.schedule_c_net else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Unemployment</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.unemployment_comp) if col.tax_estimate.unemployment_comp else '—' }}</td>{% endfor %}
+              </tr>
+              <tr class="fw-semibold table-light">
+                <td>Total Income</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-bold' if col.is_current }}">${{ "{:,.0f}".format(col.tax_estimate.total_income) }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">Adjusted Gross Income (AGI)</td>
+                {% for col in calc_cols %}<td class="text-end text-muted {{ 'fw-semibold' if col.is_current }}">${{ "{:,.0f}".format(col.tax_estimate.agi) }}</td>{% endfor %}
+              </tr>
+
+              {# ── Tax Computation ── #}
+              <tr class="table-secondary"><td class="fw-semibold" colspan="{{ calc_cols | length + 1 }}">Tax Computation</td></tr>
+              <tr>
+                <td>Deduction Type</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ col.tax_estimate.deduction_type }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Deduction Amount</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">({{ "${:,.0f}".format(col.tax_estimate.deduction_used) }})</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>QBI Deduction (Sec. 199A)</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "(${:,.0f})".format(col.tax_estimate.qbi_deduction) if col.tax_estimate.qbi_deduction else '—' }}</td>{% endfor %}
+              </tr>
+              <tr class="fw-semibold table-light">
+                <td>Taxable Income</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-bold' if col.is_current }}">${{ "{:,.0f}".format(col.tax_estimate.taxable_income) }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Income Tax (brackets)</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">${{ "{:,.0f}".format(col.tax_estimate.regular_tax) }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>LTCG / Qualified Div. Tax</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.ltcg_tax) if col.tax_estimate.ltcg_tax else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>NIIT (3.8%)</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.niit) if col.tax_estimate.niit else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Self-Employment Tax</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.se_tax) if col.tax_estimate.se_tax else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td class="text-success">Child Tax Credit</td>
+                {% for col in calc_cols %}<td class="text-end text-success {{ 'fw-semibold' if col.is_current }}">{{ "(${:,.0f})".format(col.tax_estimate.child_tax_credit) if col.tax_estimate.child_tax_credit else '—' }}</td>{% endfor %}
+              </tr>
+              <tr class="fw-semibold table-light">
+                <td>Total Federal Tax</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-bold' if col.is_current }}">${{ "{:,.0f}".format(col.tax_estimate.total_tax) }}</td>{% endfor %}
+              </tr>
+
+              {# ── Payments ── #}
+              <tr class="table-secondary"><td class="fw-semibold" colspan="{{ calc_cols | length + 1 }}">Payments &amp; Withholding</td></tr>
+              <tr>
+                <td>W-2 Withholding</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">${{ "{:,.0f}".format(col.tax_estimate.w2_withholding) }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Other Withholding</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.other_withholding) if col.tax_estimate.other_withholding else '—' }}</td>{% endfor %}
+              </tr>
+              <tr>
+                <td>Estimated Tax Payments</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-semibold' if col.is_current }}">{{ "${:,.0f}".format(col.tax_estimate.estimated_payments) if col.tax_estimate.estimated_payments else '—' }}</td>{% endfor %}
+              </tr>
+              <tr class="fw-semibold table-light">
+                <td>Total Payments</td>
+                {% for col in calc_cols %}<td class="text-end {{ 'fw-bold' if col.is_current }}">${{ "{:,.0f}".format(col.tax_estimate.total_payments) }}</td>{% endfor %}
+              </tr>
+
+              {# ── Result ── #}
+              <tr class="table-secondary"><td class="fw-semibold" colspan="{{ calc_cols | length + 1 }}">Result</td></tr>
+              {% for col in calc_cols %}{% set te = col.tax_estimate %}{% endfor %}
+              <tr class="fw-bold">
+                <td>Refund / (Owed)</td>
+                {% for col in calc_cols %}
+                  {% set te = col.tax_estimate %}
+                  <td class="text-end {{ 'text-success' if te.refund_or_owed >= 0 else 'text-danger' }} {{ 'fw-bold' if col.is_current }}">
+                    {% if te.refund_or_owed >= 0 %}${{ "{:,.0f}".format(te.refund_or_owed) }}{% else %}(${{ "{:,.0f}".format(te.refund_or_owed | abs) }}){% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {# Estimator notes (collapsed) #}
+      {% for col in calc_cols %}
+        {% if col.tax_estimate.notes | length > 1 %}
+        <details class="mb-2">
+          <summary class="small text-muted" style="cursor:pointer">{{ col.tax_estimate.tax_year }} estimator notes ({{ col.tax_estimate.notes | length - 1 }})</summary>
+          <ul class="small text-muted mt-1 mb-0">
+            {% for note in col.tax_estimate.notes[1:] %}<li>{{ note }}</li>{% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+      {% endfor %}
+
+    {% endif %}
+
+  </div>{# /tab-taxcalc #}
+
   {# ════════════════════════════════════════ TAB: Tax Return ════ #}
   <div class="tab-pane fade" id="tab-taxreturn">
 
@@ -1974,123 +2108,33 @@
       Data is pulled from parsed documents only. Review source documents carefully.
     </div>
 
-    {# ── Tax Estimate Summary Card ── #}
-    {% if tax_estimate %}
-    <div class="card shadow-sm mb-4">
-      <div class="card-header py-2 fw-semibold small d-flex align-items-center justify-content-between">
-        <span>Federal Tax Estimate &mdash; {{ tax_estimate.tax_year }}</span>
-        <span class="badge bg-secondary text-uppercase">{{ tax_estimate.filing_status }}</span>
-      </div>
-      <div class="card-body p-3">
-
-        {# Refund / Owed Banner #}
-        {% if tax_estimate.refund_or_owed >= 0 %}
-        <div class="alert alert-success py-2 mb-3 d-flex align-items-center gap-2" role="alert">
-          <strong class="fs-5">Estimated Refund:</strong>
-          <span class="fs-5">${{ "{:,.0f}".format(tax_estimate.refund_or_owed) }}</span>
-        </div>
-        {% else %}
-        <div class="alert alert-danger py-2 mb-3 d-flex align-items-center gap-2" role="alert">
-          <strong class="fs-5">Estimated Amount Owed:</strong>
-          <span class="fs-5">${{ "{:,.0f}".format(tax_estimate.refund_or_owed | abs) }}</span>
-        </div>
-        {% endif %}
-
-        <div class="row g-3">
-          {# Income column #}
-          <div class="col-md-4">
-            <table class="table table-sm mb-0">
-              <thead class="table-light"><tr><th colspan="2" class="small">Income</th></tr></thead>
-              <tbody class="small">
-                {% if tax_estimate.w2_wages %}<tr><td>W-2 Wages</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.w2_wages) }}</td></tr>{% endif %}
-                {% if tax_estimate.taxable_interest %}<tr><td>Taxable Interest</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.taxable_interest) }}</td></tr>{% endif %}
-                {% if tax_estimate.ordinary_dividends %}<tr><td>Ordinary Dividends</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.ordinary_dividends) }}</td></tr>{% endif %}
-                {% if tax_estimate.short_term_cap_gains or tax_estimate.long_term_cap_gains %}
-                <tr><td>Cap. Gains (ST / LT)</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.short_term_cap_gains) }} / ${{ "{:,.0f}".format(tax_estimate.long_term_cap_gains) }}</td></tr>
-                {% endif %}
-                {% if tax_estimate.ira_pension_taxable %}<tr><td>IRA / Pension</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.ira_pension_taxable) }}</td></tr>{% endif %}
-                {% if tax_estimate.ss_benefits_taxable %}<tr><td>Soc. Security (taxable)</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.ss_benefits_taxable) }}</td></tr>{% endif %}
-                {% if tax_estimate.schedule_c_net %}<tr><td>Schedule C / SE</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.schedule_c_net) }}</td></tr>{% endif %}
-                {% if tax_estimate.unemployment_comp %}<tr><td>Unemployment</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.unemployment_comp) }}</td></tr>{% endif %}
-                <tr class="fw-semibold table-light"><td>Total Income</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.total_income) }}</td></tr>
-                <tr><td class="text-muted">AGI</td><td class="text-end text-muted">${{ "{:,.0f}".format(tax_estimate.agi) }}</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          {# Tax computation column #}
-          <div class="col-md-4">
-            <table class="table table-sm mb-0">
-              <thead class="table-light"><tr><th colspan="2" class="small">Tax Computation</th></tr></thead>
-              <tbody class="small">
-                <tr><td>Deduction ({{ tax_estimate.deduction_type }})</td><td class="text-end">(${{ "{:,.0f}".format(tax_estimate.deduction_used) }})</td></tr>
-                {% if tax_estimate.qbi_deduction %}<tr><td>QBI (Sec. 199A)</td><td class="text-end">(${{ "{:,.0f}".format(tax_estimate.qbi_deduction) }})</td></tr>{% endif %}
-                <tr class="fw-semibold table-light"><td>Taxable Income</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.taxable_income) }}</td></tr>
-                <tr><td>Income Tax (brackets)</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.regular_tax) }}</td></tr>
-                {% if tax_estimate.ltcg_tax %}<tr><td>LTCG / QD Tax</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.ltcg_tax) }}</td></tr>{% endif %}
-                {% if tax_estimate.niit %}<tr><td>NIIT (3.8%)</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.niit) }}</td></tr>{% endif %}
-                {% if tax_estimate.se_tax %}<tr><td>SE Tax</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.se_tax) }}</td></tr>{% endif %}
-                {% if tax_estimate.child_tax_credit %}<tr><td>Child Tax Credit</td><td class="text-end text-success">(${{ "{:,.0f}".format(tax_estimate.child_tax_credit) }})</td></tr>{% endif %}
-                <tr class="fw-semibold table-light"><td>Total Federal Tax</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.total_tax) }}</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          {# Payments column #}
-          <div class="col-md-4">
-            <table class="table table-sm mb-0">
-              <thead class="table-light"><tr><th colspan="2" class="small">Payments</th></tr></thead>
-              <tbody class="small">
-                <tr><td>W-2 Withholding</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.w2_withholding) }}</td></tr>
-                {% if tax_estimate.other_withholding %}<tr><td>Other Withholding</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.other_withholding) }}</td></tr>{% endif %}
-                {% if tax_estimate.estimated_payments %}<tr><td>Estimated Payments</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.estimated_payments) }}</td></tr>{% endif %}
-                <tr class="fw-semibold table-light"><td>Total Payments</td><td class="text-end">${{ "{:,.0f}".format(tax_estimate.total_payments) }}</td></tr>
-                <tr class="table-light"><td></td><td></td></tr>
-                <tr class="fw-bold {% if tax_estimate.refund_or_owed >= 0 %}text-success{% else %}text-danger{% endif %}">
-                  <td>{% if tax_estimate.refund_or_owed >= 0 %}Refund{% else %}Owed{% endif %}</td>
-                  <td class="text-end">${{ "{:,.0f}".format(tax_estimate.refund_or_owed | abs) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {% if tax_estimate.notes | length > 1 %}
-        <details class="mt-3">
-          <summary class="small text-muted" style="cursor:pointer">Estimator notes ({{ tax_estimate.notes | length - 1 }})</summary>
-          <ul class="small text-muted mt-2 mb-0">
-            {% for note in tax_estimate.notes[1:] %}
-            <li>{{ note }}</li>
-            {% endfor %}
-          </ul>
-        </details>
-        {% endif %}
-
-      </div>
-    </div>
-    {% endif %}
-
-    {% if form_1040_data and form_1040_data.lines %}
-      {% set main_lines  = form_1040_data.lines | selectattr('sched', 'none') | list %}
-      {% set sched_lines = form_1040_data.lines | selectattr('sched', 'equalto', 'A') | list %}
-
+    {% if ref_main_lines %}
+      {# Multi-year Form 1040 Key Lines — years as columns, oldest left, current right #}
       <div class="card shadow-sm mb-3">
         <div class="card-header py-2 fw-semibold small">Form 1040 — Key Lines</div>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
             <thead class="table-light">
               <tr>
-                <th style="min-width:300px">Line / Description</th>
-                <th class="text-end">Value</th>
-                <th>Source Documents</th>
+                <th style="min-width:260px">Line / Description</th>
+                {% for col in year_columns %}
+                <th class="text-end {{ 'fw-bold' if col.is_current }}" style="min-width:110px">
+                  {{ col.year }}{% if col.is_current %} <span class="badge bg-primary ms-1" style="font-size:.65rem">Current</span>{% endif %}
+                  {% if col.from_prior_return %}<div class="text-muted fw-normal" style="font-size:.7rem">Prior Return</div>{% endif %}
+                </th>
+                {% endfor %}
               </tr>
             </thead>
             <tbody>
-              {% for ln in main_lines %}
-              <tr class="{{ 'table-warning' if ln.value is none }}">
-                <td class="small">{{ ln.label }}</td>
-                <td class="text-end amount">{{ ln.value | fmt_amount if ln.value is not none else '—' }}</td>
-                <td class="small text-muted">{{ ln.sources | join(', ') if ln.sources else '—' }}</td>
+              {% for ref in ref_main_lines %}
+              <tr>
+                <td class="small">{{ ref.label }}</td>
+                {% for col in year_columns %}
+                  {% set entry = col.main_lines_dict.get(ref.label) %}
+                  <td class="text-end amount {{ 'fw-semibold' if col.is_current }}">
+                    {{ entry.value | fmt_amount if (entry and entry.value is not none) else '—' }}
+                  </td>
+                {% endfor %}
               </tr>
               {% endfor %}
             </tbody>
@@ -2098,7 +2142,7 @@
         </div>
       </div>
 
-      {% if sched_lines %}
+      {% if ref_sched_lines %}
       <div class="mb-3">
         <button class="btn btn-sm btn-outline-secondary" type="button"
                 data-bs-toggle="collapse" data-bs-target="#schedACollapse">
@@ -2111,17 +2155,22 @@
               <table class="table table-sm align-middle mb-0">
                 <thead class="table-light">
                   <tr>
-                    <th style="min-width:300px">Line / Description</th>
-                    <th class="text-end">Value</th>
-                    <th>Source Documents</th>
+                    <th style="min-width:260px">Line / Description</th>
+                    {% for col in year_columns %}
+                    <th class="text-end {{ 'fw-bold' if col.is_current }}" style="min-width:110px">{{ col.year }}</th>
+                    {% endfor %}
                   </tr>
                 </thead>
                 <tbody>
-                  {% for ln in sched_lines %}
-                  <tr class="{{ 'table-warning' if ln.value is none }}">
-                    <td class="small">{{ ln.label }}</td>
-                    <td class="text-end amount">{{ ln.value | fmt_amount if ln.value is not none else '—' }}</td>
-                    <td class="small text-muted">{{ ln.sources | join(', ') if ln.sources else '—' }}</td>
+                  {% for ref in ref_sched_lines %}
+                  <tr>
+                    <td class="small">{{ ref.label }}</td>
+                    {% for col in year_columns %}
+                      {% set entry = col.sched_lines_dict.get(ref.label) %}
+                      <td class="text-end amount {{ 'fw-semibold' if col.is_current }}">
+                        {{ entry.value | fmt_amount if (entry and entry.value is not none) else '—' }}
+                      </td>
+                    {% endfor %}
                   </tr>
                   {% endfor %}
                 </tbody>

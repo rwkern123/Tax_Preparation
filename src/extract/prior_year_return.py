@@ -318,15 +318,28 @@ def _line(
             candidates = re.findall(r"([\d,]+\.\d{2})", content)
     else:
         # TurboTax 1040 style: integer amounts end with "." e.g. "244,366."
+        # Negative values are wrapped in parens: "(12,345.)" — capture the parens so
+        # parse_amount_token can detect the sign.
         # Require ≥3-digit number (rules out "1." "2." line-number artifacts).
         # Allow optional two-decimal suffix for hybrid PDFs.
-        candidates = re.findall(r"(?<!\d)([\d,]{2,}\d\.\d{2}|[\d,]{2,}\d\.)", content)
+        candidates = re.findall(r"(\([\d,]{2,}\d\.\d{2}\)|\([\d,]{2,}\d\.\)|-[\d,]{2,}\d\.\d{2}|-[\d,]{2,}\d\.|(?<!\d)[\d,]{2,}\d\.\d{2}|(?<!\d)[\d,]{2,}\d\.)", content)
 
     if not candidates:
         return None
 
     # Last candidate on the line = the actual IRS field value
     raw = candidates[-1].rstrip(".")
+
+    # If the candidate has no sign encoding of its own, check the content
+    # immediately before it for a stray "-" (PDF extraction sometimes splits
+    # the minus sign from the digits, e.g. "- 3,000." instead of "-3,000.").
+    if not raw.startswith("-") and not raw.startswith("("):
+        last_pos = content.rfind(candidates[-1])
+        if last_pos > 0:
+            prefix = content[max(0, last_pos - 4):last_pos]
+            if re.search(r"-\s*$", prefix):
+                raw = "-" + raw
+
     return parse_amount_token(raw)
 
 

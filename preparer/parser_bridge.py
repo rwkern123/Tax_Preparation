@@ -40,6 +40,11 @@ def parse_uploaded_file(file_path: str, use_ocr: bool = False, category_hint: st
             doc_type = "brokerage_1099"
             confidence = max(confidence, 0.5)
 
+        # Prior year return category always implies prior_year_return doc type.
+        if category_hint == "Prior_Year_Return" and doc_type != "prior_year_return":
+            doc_type = "prior_year_return"
+            confidence = max(confidence, 0.5)
+
         extracted: dict = {}
         if doc_type == "w2":
             data = parse_w2_text(text)

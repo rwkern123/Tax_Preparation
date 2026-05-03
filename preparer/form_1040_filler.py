@@ -619,22 +619,41 @@ def aggregate_1040_data(parsed_docs: list[dict], user: dict, year: int,
     has_sched_d = (st_gl is not None or lt_gl is not None)
     total_gain_loss = (st_gl or 0.0) + (lt_gl or 0.0) if has_sched_d else None
 
+    all_sources = w2_sources + [s for s in b1099_sources if s not in w2_sources]
+
     lines = [
-        {"key": "line_1a",  "label": "1a — W-2 wages, salaries, tips",        "value": w2_wages if w2_sources else None,         "sources": w2_sources,    "sched": None},
-        {"key": "line_1z",  "label": "1z — Total wages",                       "value": w2_wages if w2_sources else None,         "sources": w2_sources,    "sched": None},
-        {"key": "line_2b",  "label": "2b — Taxable interest",                  "value": interest if b1099_sources else None,      "sources": b1099_sources, "sched": None},
-        {"key": "line_3a",  "label": "3a — Qualified dividends",               "value": qual_dividends if b1099_sources else None,"sources": b1099_sources, "sched": None},
-        {"key": "line_3b",  "label": "3b — Ordinary dividends",                "value": ord_dividends if b1099_sources else None, "sources": b1099_sources, "sched": None},
-        {"key": "line_7",   "label": "7 — Capital gain or (loss)",             "value": cap_gain if b1099_sources else None,      "sources": b1099_sources, "sched": None},
-        {"key": "line_9",   "label": "9 — Total income",                       "value": total_income if has_any else None,        "sources": w2_sources + [s for s in b1099_sources if s not in w2_sources], "sched": None},
-        {"key": "line_11",  "label": "11 — Adjusted gross income",             "value": agi if has_any else None,                 "sources": [],            "sched": None},
-        {"key": "line_25a", "label": "25a — Federal income tax withheld (W-2)","value": w2_withheld if w2_sources else None,      "sources": w2_sources,    "sched": None},
-        {"key": "line_25b", "label": "25b — Federal income tax withheld (1099)","value": b_withheld if b1099_sources else None,   "sources": b1099_sources, "sched": None},
-        {"key": "line_25d", "label": "25d — Total federal income tax withheld", "value": total_withheld if (w2_sources or b1099_sources) else None, "sources": w2_sources + [s for s in b1099_sources if s not in w2_sources], "sched": None},
-        {"key": "scha_8a",  "label": "Sched A 8a — Home mortgage interest",    "value": mortgage_int if f1098_sources else None,  "sources": f1098_sources, "sched": "A"},
-        {"key": "scha_5b",  "label": "Sched A 5b — Real estate taxes",         "value": real_estate_tax if f1098_sources else None,"sources": f1098_sources,"sched": "A"},
-        {"key": "scha_11",  "label": "Sched A 11 — Charitable (cash)",         "value": charitable_cash if charitable_cash else None,     "sources": charitable_sources, "sched": "A"},
-        {"key": "scha_12",  "label": "Sched A 12 — Charitable (noncash)",      "value": charitable_noncash if charitable_noncash else None,"sources": charitable_sources, "sched": "A"},
+        # ── Income (Page 1) ──
+        {"key": "line_1a",  "label": "1a — W-2 wages, salaries, tips",         "value": w2_wages        if w2_sources    else None, "sources": w2_sources,    "sched": None},
+        {"key": "line_1z",  "label": "1z — Total wages",                        "value": w2_wages        if w2_sources    else None, "sources": w2_sources,    "sched": None},
+        {"key": "line_2b",  "label": "2b — Taxable interest",                   "value": interest        if b1099_sources else None, "sources": b1099_sources, "sched": None},
+        {"key": "line_3a",  "label": "3a — Qualified dividends",                "value": qual_dividends  if b1099_sources else None, "sources": b1099_sources, "sched": None},
+        {"key": "line_3b",  "label": "3b — Ordinary dividends",                 "value": ord_dividends   if b1099_sources else None, "sources": b1099_sources, "sched": None},
+        {"key": "line_7",   "label": "7 — Capital gain or (loss)",              "value": cap_gain        if b1099_sources else None, "sources": b1099_sources, "sched": None},
+        {"key": "line_9",   "label": "9 — Total income",                        "value": total_income    if has_any       else None, "sources": all_sources,   "sched": None},
+        {"key": "line_11",  "label": "11 — Adjusted gross income (AGI)",         "value": agi             if has_any       else None, "sources": [],            "sched": None},
+        # ── Tax & Credits (Page 2) — filled in by views.py from TaxEstimate ──
+        {"key": "line_12",  "label": "12 — Standard or itemized deduction",     "value": None, "sources": [], "sched": None, "_est_field": "deduction_used"},
+        {"key": "line_15",  "label": "15 — Taxable income",                     "value": None, "sources": [], "sched": None, "_est_field": "taxable_income"},
+        {"key": "line_16",  "label": "16 — Tax",                                "value": None, "sources": [], "sched": None, "_est_field": "regular_tax"},
+        {"key": "line_17",  "label": "17 — AMT",                                "value": None, "sources": [], "sched": None, "_est_field": None},
+        {"key": "line_23",  "label": "23 — Other taxes (SE, NIIT)",             "value": None, "sources": [], "sched": None, "_est_field": "other_taxes"},
+        {"key": "line_24",  "label": "24 — Total tax",                          "value": None, "sources": [], "sched": None, "_est_field": "total_tax"},
+        # ── Payments ──
+        {"key": "line_25a", "label": "25a — W-2 federal tax withheld",          "value": w2_withheld     if w2_sources    else None, "sources": w2_sources,    "sched": None},
+        {"key": "line_25b", "label": "25b — 1099 federal tax withheld",         "value": b_withheld      if b1099_sources else None, "sources": b1099_sources, "sched": None},
+        {"key": "line_25d", "label": "25d — Total federal tax withheld",        "value": total_withheld  if (w2_sources or b1099_sources) else None, "sources": all_sources, "sched": None},
+        {"key": "line_26",  "label": "26 — Estimated tax payments",             "value": None, "sources": [], "sched": None, "_est_field": "estimated_payments"},
+        {"key": "line_33",  "label": "33 — Total payments",                     "value": None, "sources": [], "sched": None, "_est_field": "total_payments"},
+        # ── Refund / Amount Owed ──
+        {"key": "line_35a", "label": "35a — Refund",                            "value": None, "sources": [], "sched": None, "_est_field": "refund_amount"},
+        {"key": "line_37",  "label": "37 — Amount owed",                        "value": None, "sources": [], "sched": None, "_est_field": "owed_amount"},
+        # ── Schedule A ──
+        {"key": "scha_5b",  "label": "Sched A 5b — Real estate taxes",          "value": real_estate_tax if f1098_sources else None, "sources": f1098_sources, "sched": "A"},
+        {"key": "scha_5e",  "label": "Sched A 5e — SALT (capped at $10,000)",   "value": salt_capped     if f1098_sources else None, "sources": f1098_sources, "sched": "A"},
+        {"key": "scha_8a",  "label": "Sched A 8a — Home mortgage interest",     "value": mortgage_int    if f1098_sources else None, "sources": f1098_sources, "sched": "A"},
+        {"key": "scha_11",  "label": "Sched A 11 — Charitable (cash)",          "value": charitable_cash    if charitable_cash    else None, "sources": charitable_sources, "sched": "A"},
+        {"key": "scha_12",  "label": "Sched A 12 — Charitable (noncash)",       "value": charitable_noncash if charitable_noncash else None, "sources": charitable_sources, "sched": "A"},
+        {"key": "scha_17",  "label": "Sched A 17 — Total itemized deductions",  "value": itemized_total  if has_sched_a else None, "sources": [], "sched": "A"},
     ]
 
     return {

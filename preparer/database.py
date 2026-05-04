@@ -162,7 +162,7 @@ def reparse_document(db_path: str, upload_id: int, use_ocr: bool = False) -> Non
 
     from .parser_bridge import parse_uploaded_file
 
-    result = parse_uploaded_file(row["file_path"], use_ocr=use_ocr)
+    result = parse_uploaded_file(row["file_path"], use_ocr=use_ocr, category_hint=row["category"] or "")
     upsert_parsed_document(
         db_path=db_path,
         upload_id=upload_id,

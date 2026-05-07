@@ -65,7 +65,10 @@ def create_app(config: dict = None) -> Flask:
         if value is None:
             return "—"
         try:
-            return f"${float(value):,.2f}"
+            v = float(value)
+            if v < 0:
+                return f"(${abs(v):,.2f})"
+            return f"${v:,.2f}"
         except (TypeError, ValueError):
             return str(value)
 

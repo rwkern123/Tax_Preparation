@@ -1,10 +1,10 @@
-# Tax Preparation Tool — Identified Gaps
+# Tax Preparation Tool — Roadmap
 
-Gaps identified during codebase review. Last updated: April 2026. Organized by category and approximate priority.
+Progress log and ideas backlog. Last updated: May 2026. Organized by category and approximate priority.
 
 ---
 
-## 1. Missing Inbound Form Parsers
+## 1. Inbound Form Parsers
 Forms that clients receive and bring to their preparer — need extraction support.
 
 | Form | Description | Priority |
@@ -24,12 +24,12 @@ Forms that clients receive and bring to their preparer — need extraction suppo
 - 1099-R extractor completed April 2026 — dataclass, parser, classifier, `main.py` wiring, checklist section F, questions.
 - Prior Year Form 1040 completed April 2026 — `src/extract/prior_year_return.py` (local regex) + `src/extract/azure_prior_year_return.py` (Azure Document Intelligence). Surfaced in client detail UI.
 - 1099-G, 1099-MISC, 1098-T, 1099-Q, 1099-SA completed April 2026 — dataclasses, local regex parsers, Azure backup extractors (1099-G/MISC/1098-T use dedicated Azure prebuilt models; 1099-Q/SA use `prebuilt-layout` fallback), classification patterns, and `main.py` wiring. Blank forms copied to `examples/forms/blank_forms/`.
-- SSA-1099 is issued by the Social Security Administration, not the IRS — no Azure prebuilt model exists. Will require custom regex parser only.
+- SSA-1099 completed April 2026 — `src/extract/ssa_1099.py` (custom regex parser only; no Azure prebuilt model exists for SSA-issued forms), checklist prompts, classification patterns.
 - Each new form requires: dataclass in `models.py`, extractor in `src/extract/`, classification patterns in `classify.py`, wiring in `main.py`, and checklist/questions entries.
 
 ---
 
-## 2. Missing Outbound / Preparation Workflows
+## 2. Outbound / Preparation Workflows
 Scenarios where the preparer generates a form on behalf of a business-owner client.
 
 | Workflow | Description | Priority |
@@ -86,17 +86,43 @@ Suggested approach: abstract a broker adapter interface; implement per-broker ad
 
 ---
 
-## 6. Web UI / Dashboard Gaps
+## 6. Web UI / Dashboard
 
-- **No manual override / correction UI** — preparer cannot correct an extracted value in the browser.
+- ~~**No manual override / correction UI**~~ — **Completed April 2026**: preparer portal (`preparer/`) supports field overrides on the client detail page.
 - **No Excel/CSV export** from the dashboard for downstream tax software import.
-- **Dashboard rebuilds from scratch** on every page load — no caching of JSON/CSV summaries.
-- **No authentication** — acceptable for local-only use, but worth noting if ever exposed on a network.
+- ~~**Dashboard rebuilds from scratch on every page load**~~ — **Partially addressed April 2026**: document-load caching added (`src/dashboard.py`). Full result caching (JSON/CSV) still not implemented.
+- ~~**No authentication**~~ — **Addressed**: preparer portal has login with password auth. Client portal has login + 2FA. Original `src/webapp.py` (read-only CLI companion) remains unauthenticated, which is acceptable for local-only use.
 - ~~**No prior-year comparison visible in UI**~~ — **Completed April 2026**: prior-year return data is now surfaced on the client detail page.
 
 ---
 
-## 7. Multi-State / Complex Filing Scenarios
+## 7. Preparer & Client Portals
+New dual-portal architecture added April–May 2026. Remaining gaps:
+
+**Preparer portal (`preparer/`):**
+- No Excel/CSV export of client data for downstream tax software import.
+- No database backup / export workflow — `portal_data/preparer.db` is a single SQLite file with no automated backup.
+- Questionnaire responses stored in portal DB but not yet bridged back into `ExtractionResult` / workpaper generation pipeline.
+- No audit log of who changed what field override and when.
+
+**Client portal (`portal/`):**
+- No email notification when the preparer marks a questionnaire ready for client review.
+- No document status tracking (uploaded → reviewed → accepted) visible to the client.
+- 2FA implementation (`portal/two_factor.py`) — verify delivery mechanism is production-ready before exposing on a network.
+
+**Form 1040 PDF filler (`preparer/form_1040_filler.py`):**
+- Fills Form 1040 + Schedules A, B, D from extracted data — completed May 2026.
+- Schedule C and Schedule E PDF filling not yet implemented.
+- No validation that all required fields are populated before generating the PDF.
+
+**Federal tax estimator (`src/tax_calculator.py`):**
+- 2024/2025 bracket calculations added May 2026.
+- AMT, NIIT, QBI deduction (§199A), and self-employment tax not yet modeled.
+- No state income tax estimation.
+
+---
+
+## 8. Multi-State / Complex Filing Scenarios
 
 - Questions.py flags multi-state W-2 situations, but there is no structured extraction or checklist support for:
   - Apportioned income across states
@@ -105,15 +131,16 @@ Suggested approach: abstract a broker adapter interface; implement per-broker ad
 
 ---
 
-## 8. Performance / Scalability
+## 9. Performance / Scalability
 
 - **Single-threaded serial processing** — slow for large batches (20+ clients, many PDFs each).
 - **No caching of extracted text or results** — every run re-processes all PDFs from scratch.
 
 ---
 
-## 9. Documentation Gaps
+## 10. Documentation Gaps
 
-- **Azure setup guide incomplete** — Azure Document Intelligence endpoint/API key acquisition and configuration steps not fully documented. (Azure extractors exist for W-2, brokerage 1099-B, 1098, 1099-G, 1099-MISC, 1098-T, 1099-Q, 1099-SA, and prior-year Form 1040 — but onboarding a new user requires undocumented setup.)
+- **Azure setup guide incomplete** — Azure Document Intelligence endpoint/API key acquisition and configuration steps not fully documented. (Azure extractors exist for W-2, brokerage 1099-B, 1098, 1099-G, 1099-MISC, 1098-T, 1099-Q, 1099-SA, Schedule C, and prior-year Form 1040 — but onboarding a new user requires undocumented setup.)
 - **OCR setup on Windows** — Tesseract + Poppler PATH configuration not documented.
 - **No troubleshooting guide** for common parse failures (low-confidence extractions, blank fields).
+- **Preparer and client portal setup not documented** — environment variables (`PREPARER_PASSWORD`, `PREPARER_SECRET_KEY`), database initialization, and launch steps (`launch_portal.bat`) need a setup guide.

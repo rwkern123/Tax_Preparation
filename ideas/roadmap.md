@@ -112,8 +112,13 @@ New dual-portal architecture added April–May 2026. Remaining gaps:
 
 **Form 1040 PDF filler (`preparer/form_1040_filler.py`):**
 - Fills Form 1040 + Schedules A, B, D from extracted data — completed May 2026.
-- Schedule C and Schedule E PDF filling not yet implemented.
+- ~~Schedule C PDF filling not yet implemented~~ — **Completed May 2026**: Schedule C and Schedule 1 PDFs are now filled from Schedule C interview answers and appended to the merged 1040 output. Net profit flows into Form 1040 Line 8 (Other income) via Schedule 1 Line 3.
+- Schedule E PDF filling not yet implemented.
 - No validation that all required fields are populated before generating the PDF.
+
+**Schedule C interview — Tax Return tab integration:**
+- ~~Schedule C interview data disconnected from Tax Return tab~~ — **Completed May 2026**: interview answers now flow into the Tax Return tab key-lines table (Line 8 — Other income, plus a collapsible Schedule C detail section showing gross receipts, COGS, gross profit, total expenses, and net profit). PDF generation appends filled Schedule C + Schedule 1 pages.
+- Multiple businesses (business_index > 0) not yet shown in the Tax Return tab — only business_index 0 is loaded.
 
 **Federal tax estimator (`src/tax_calculator.py`):**
 - 2024/2025 bracket calculations added May 2026.

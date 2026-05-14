@@ -1,0 +1,506 @@
+{% extends "preparer/base.html" %}
+{% block title %}Schedule C — {{ user.first_name }} {{ user.last_name }} — {{ year }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" crossorigin="anonymous">
+<style>
+  .sch-c-layout { display:flex; gap:0; min-height:80vh; }
+  .sch-c-sidebar {
+    width:220px; flex-shrink:0;
+    background:#1e3a5f; color:#fff;
+    padding:18px 0; border-radius:8px 0 0 8px;
+    font-size:.875rem;
+  }
+  .sch-c-sidebar .sidebar-title {
+    font-size:.7rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:.08em; color:#a0b4cc; padding:0 16px 10px;
+    border-bottom:1px solid #2c5282; margin-bottom:6px;
+  }
+  .sch-c-sidebar .nav-item a {
+    display:flex; align-items:center; gap:7px;
+    padding:8px 16px; color:#cbd5e0; text-decoration:none;
+    border-left:3px solid transparent;
+  }
+  .sch-c-sidebar .nav-item a:hover { background:#2c5282; color:#fff; }
+  .sch-c-sidebar .nav-item a.active { background:#2c5282; color:#fff; border-left-color:#63b3ed; }
+  .check { width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.6rem; flex-shrink:0; }
+  .check-done { background:#48bb78; color:#fff; }
+  .check-todo { background:#4a5568; color:#a0aec0; }
+  .sch-c-center { flex:1; background:#fff; padding:24px 28px; border:1px solid #e2e8f0; border-left:none; min-width:0; }
+  .sch-c-guidance {
+    width:300px; flex-shrink:0;
+    background:#f7fafc; padding:18px 16px;
+    border:1px solid #e2e8f0; border-left:none;
+    border-radius:0 8px 8px 0; font-size:.82rem; overflow-y:auto;
+  }
+  .guidance-title { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; font-weight:700; color:#2c5282; margin-bottom:8px; }
+  .guidance-field-name { font-weight:700; color:#2d3748; margin-bottom:4px; font-size:.82rem; }
+  .guidance-irs-text { color:#4a5568; line-height:1.5; }
+  .guidance-pub-refs { margin-top:10px; }
+  .guidance-pub-ref { display:flex; gap:6px; margin-bottom:4px; color:#2c5282; font-size:.78rem; }
+  .flag-card { border-radius:6px; padding:8px 12px; margin-bottom:6px; font-size:.82rem; }
+  .flag-warning { background:#fff5f5; border-left:4px solid #fc8181; color:#742a2a; }
+  .flag-info { background:#ebf8ff; border-left:4px solid #63b3ed; color:#2c5282; }
+  .net-box { background:#1e3a5f; color:#fff; border-radius:6px; padding:12px 16px; text-align:center; margin-bottom:12px; }
+  .net-box.loss { background:#742a2a; }
+  .net-box .net-label { font-size:.72rem; color:#a0b4cc; }
+  .net-box .net-amt { font-size:1.4rem; font-weight:800; }
+  .progress-bar-wrap { margin-bottom:20px; }
+  .progress-label { font-size:.78rem; color:#718096; margin-bottom:3px; }
+  .progress { height:7px; border-radius:4px; background:#e2e8f0; }
+  .progress-fill { height:7px; border-radius:4px; background:#2c5282; }
+  .part-title { font-size:1.1rem; font-weight:700; color:#1e3a5f; margin-bottom:3px; }
+  .part-subtitle { color:#718096; font-size:.85rem; margin-bottom:20px; }
+  .q-group-label { font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; color:#2c5282; font-weight:700; margin:16px 0 8px; padding-bottom:3px; border-bottom:1px solid #bee3f8; }
+  .q-block { margin-bottom:14px; }
+  .q-label { font-size:.875rem; color:#2d3748; margin-bottom:5px; display:block; }
+  .q-help-toggle { font-size:.72rem; color:#3182ce; cursor:pointer; text-decoration:underline; margin-left:5px; }
+  .q-help-text { background:#ebf8ff; border-left:3px solid #63b3ed; padding:6px 10px; border-radius:4px; font-size:.78rem; color:#2c5282; margin:4px 0 6px; display:none; }
+  .q-help-text.show { display:block; }
+  .yn-row { display:flex; gap:14px; }
+  .yn-row label { display:flex; align-items:center; gap:5px; font-size:.875rem; cursor:pointer; }
+  .money-input { position:relative; display:inline-block; }
+  .money-input::before { content:"$"; position:absolute; left:8px; top:50%; transform:translateY(-50%); color:#718096; font-size:.85rem; }
+  .money-input input { padding-left:20px; }
+  input[type=text], input[type=number], input[type=date], select, textarea { border:1px solid #cbd5e0; border-radius:4px; padding:6px 9px; font-size:.875rem; width:100%; max-width:360px; }
+  input:focus, select:focus { outline:none; border-color:#3182ce; box-shadow:0 0 0 3px rgba(49,130,206,.15); }
+  .irs-ref-badge { display:inline-block; background:#ebf8ff; color:#2c5282; font-size:.7rem; border-radius:3px; padding:1px 6px; margin-left:6px; font-weight:600; }
+  .field-source { font-size:.7rem; padding:1px 6px; border-radius:3px; margin-left:6px; }
+  .source-client { background:#e6fffa; color:#285e61; }
+  .source-override { background:#fefcbf; color:#744210; }
+  .other-exp-row { display:flex; gap:7px; align-items:flex-start; margin-bottom:6px; }
+  .other-exp-row input[type=text] { flex:1; max-width:none; }
+  .other-exp-row input[type=number] { width:120px; max-width:120px; }
+  .remove-exp { color:#e53e3e; background:none; border:none; cursor:pointer; font-size:1rem; }
+  .save-status { font-size:.75rem; color:#718096; margin-top:5px; }
+  .conditional-block { display:none; }
+  .action-row { display:flex; gap:10px; margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0; }
+  .business-tabs { display:flex; gap:7px; margin-bottom:14px; }
+  .business-tab { padding:4px 12px; border-radius:4px; font-size:.78rem; border:1px solid #cbd5e0; background:#f7fafc; color:#4a5568; text-decoration:none; }
+  .business-tab.active { background:#1e3a5f; color:#fff; border-color:#1e3a5f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding:16px 16px 60px">
+  <div style="max-width:1400px; margin:0 auto">
+
+    <!-- Header -->
+    <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+      <a href="{{ url_for('preparer.client_detail', user_id=user.id, year=year) }}"
+         class="btn btn-outline-secondary btn-sm">&larr; Back to Client</a>
+      <h5 class="fw-bold mb-0" style="color:#1e3a5f">
+        Schedule C &mdash; {{ user.first_name }} {{ user.last_name }} &mdash; TY {{ year }}
+      </h5>
+    </div>
+
+    {% if business_count > 1 %}
+    <div class="business-tabs">
+      {% for bi in range(business_count) %}
+      <a href="{{ url_for('preparer.schedule_c_edit', user_id=user.id, year=year, part=part_id, business=bi) }}"
+         class="business-tab {% if bi == business_index %}active{% endif %}">
+        Business {{ bi + 1 }}
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Three-column layout: sidebar | form | guidance -->
+    <div class="sch-c-layout">
+
+      <!-- Left sidebar: navigation -->
+      <div class="sch-c-sidebar">
+        <div class="sidebar-title">Interview Steps</div>
+        {% for np in nav_parts %}
+        <div class="nav-item">
+          <a href="{{ url_for('preparer.schedule_c_edit', user_id=user.id, year=year, part=np.id, business=business_index) }}"
+             class="{% if np.active %}active{% endif %}">
+            <span class="check {% if np.completed %}check-done{% else %}check-todo{% endif %}">
+              {% if np.completed %}&#10003;{% else %}&bull;{% endif %}
+            </span>
+            {{ np.title }}
+          </a>
+        </div>
+        {% endfor %}
+        <div class="nav-item mt-3" style="padding:8px 16px; color:#a0b4cc; font-size:.78rem">
+          &#9660; Review on client portal
+        </div>
+      </div>
+
+      <!-- Center: editable interview form -->
+      <div class="sch-c-center">
+
+        <div class="progress-bar-wrap">
+          <div class="progress-label">{{ progress_pct }}% complete</div>
+          <div class="progress">
+            <div class="progress-fill" style="width:{{ progress_pct }}%"></div>
+          </div>
+        </div>
+
+        <div class="part-title">{{ part.title }}</div>
+        <div class="part-subtitle">{{ part.subtitle }}</div>
+
+        <div id="questions-form">
+          {% set current_group = namespace(name='') %}
+          {% for q in part.questions %}
+
+            {% if q.group is defined and q.group != current_group.name %}
+              {% set current_group.name = q.group %}
+              <div class="q-group-label">{{ q.group }}</div>
+            {% endif %}
+
+            {% set is_conditional = q.conditional is defined %}
+            <div class="q-block {% if is_conditional %}conditional-block{% endif %}"
+                 id="qblock_{{ q.key }}"
+                 {% if is_conditional %}
+                 data-cond-key="{{ q.conditional.key }}"
+                 data-cond-val="{{ q.conditional.value }}"
+                 {% endif %}
+                 data-irs-ref="{{ q.irs_ref | default('') }}"
+                 data-pub-refs="{{ q.pub_refs | default([]) | join(',') }}"
+                 data-help-text="{{ q.help_text | default('') }}"
+                 data-q-key="{{ q.key }}">
+
+              <label class="q-label" onclick="focusGuidance('{{ q.key }}', this)">
+                {{ q.label }}
+                {% if q.required %}<span style="color:#e53e3e">*</span>{% endif %}
+                <span class="irs-ref-badge">{{ q.irs_ref | default('') | truncate(30, True, '…') }}</span>
+                {% if answers.get(q.key) %}
+                  <span class="field-source source-client">Client entered</span>
+                {% endif %}
+                <span class="q-help-toggle" onclick="event.stopPropagation(); toggleHelp('help_{{ q.key }}')">? Help</span>
+              </label>
+
+              <div class="q-help-text" id="help_{{ q.key }}">{{ q.help_text }}</div>
+
+              {# yes_no #}
+              {% if q.type == 'yes_no' %}
+              <div class="yn-row">
+                <label>
+                  <input type="radio" name="{{ q.key }}" value="yes"
+                         {% if answers.get(q.key) == 'yes' %}checked{% endif %}
+                         onchange="onAnswerChange('{{ q.key }}', 'yes')">
+                  Yes
+                </label>
+                <label>
+                  <input type="radio" name="{{ q.key }}" value="no"
+                         {% if answers.get(q.key) == 'no' %}checked{% endif %}
+                         onchange="onAnswerChange('{{ q.key }}', 'no')">
+                  No
+                </label>
+              </div>
+
+              {# money #}
+              {% elif q.type == 'money' %}
+              <div class="money-input">
+                <input type="number" step="0.01" min="0"
+                       id="{{ q.key }}" name="{{ q.key }}"
+                       value="{{ answers.get(q.key, '') }}"
+                       placeholder="0.00"
+                       oninput="onAnswerChange('{{ q.key }}', this.value)"
+                       onfocus="focusGuidance('{{ q.key }}', null)">
+              </div>
+
+              {# number #}
+              {% elif q.type == 'number' %}
+              <input type="number" step="1" min="0"
+                     id="{{ q.key }}" name="{{ q.key }}"
+                     value="{{ answers.get(q.key, '') }}"
+                     oninput="onAnswerChange('{{ q.key }}', this.value)"
+                     onfocus="focusGuidance('{{ q.key }}', null)">
+
+              {# date #}
+              {% elif q.type == 'date' %}
+              <input type="date"
+                     id="{{ q.key }}" name="{{ q.key }}"
+                     value="{{ answers.get(q.key, '') }}"
+                     onchange="onAnswerChange('{{ q.key }}', this.value)"
+                     onfocus="focusGuidance('{{ q.key }}', null)">
+
+              {# select #}
+              {% elif q.type == 'select' %}
+              <select id="{{ q.key }}" name="{{ q.key }}"
+                      onchange="onAnswerChange('{{ q.key }}', this.value)"
+                      onfocus="focusGuidance('{{ q.key }}', null)">
+                <option value="">— Select —</option>
+                {% for opt in q.options %}
+                <option value="{{ opt.value }}"
+                        {% if answers.get(q.key) == opt.value %}selected{% endif %}>
+                  {{ opt.label }}
+                </option>
+                {% endfor %}
+              </select>
+
+              {# text #}
+              {% elif q.type == 'text' %}
+              <input type="text"
+                     id="{{ q.key }}" name="{{ q.key }}"
+                     value="{{ answers.get(q.key, '') }}"
+                     placeholder="{{ q.placeholder if q.placeholder is defined else '' }}"
+                     oninput="onAnswerChange('{{ q.key }}', this.value)"
+                     onfocus="focusGuidance('{{ q.key }}', null)">
+
+              {# other_expenses #}
+              {% elif q.type == 'other_expenses' %}
+              <div id="other-exp-list">
+                {% set saved_items = answers.get(q.key, []) %}
+                {% if saved_items %}
+                  {% for item in saved_items %}
+                  <div class="other-exp-row">
+                    <input type="text" placeholder="Description" value="{{ item.description }}" class="other-desc">
+                    <input type="number" step="0.01" min="0" placeholder="Amount" value="{{ item.amount }}" class="other-amt">
+                    <button type="button" class="remove-exp" onclick="removeExpRow(this)">&times;</button>
+                  </div>
+                  {% endfor %}
+                {% else %}
+                  <div class="other-exp-row">
+                    <input type="text" placeholder="Description" class="other-desc">
+                    <input type="number" step="0.01" min="0" placeholder="Amount" class="other-amt">
+                    <button type="button" class="remove-exp" onclick="removeExpRow(this)">&times;</button>
+                  </div>
+                {% endif %}
+              </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm mt-1"
+                      onclick="addExpRow()">+ Add row</button>
+              {% endif %}
+
+            </div>{# end q-block #}
+          {% endfor %}
+
+          <!-- Part-level doc hints -->
+          {% if doc_hints %}
+          <div style="border-top:1px solid #e2e8f0; margin-top:20px; padding-top:14px">
+            <div style="font-size:.78rem; font-weight:600; color:#2c5282; margin-bottom:8px">Documents for this section</div>
+            {% for dh in doc_hints %}
+            {% set cat_uploads = uploads_by_cat.get(dh.category, []) %}
+            <div style="background:#f0fff4; border:1px dashed #68d391; border-radius:5px; padding:8px 12px; margin-bottom:6px; font-size:.78rem; color:#276749">
+              <div style="font-weight:600">&#128206; {{ dh.label }}</div>
+              <div style="color:#4a5568">{{ dh.description }}</div>
+              {% for u in cat_uploads %}
+              <div style="margin-top:3px">&#10003; {{ u.original_name }}</div>
+              {% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <!-- Action row -->
+          <div class="action-row">
+            {% set part_ids_list = part_ids %}
+            {% set current_idx = namespace(val=0) %}
+            {% for pid in part_ids_list %}{% if pid == part_id %}{% set current_idx.val = loop.index0 %}{% endif %}{% endfor %}
+            {% set next_idx = current_idx.val + 1 %}
+            <button type="button" class="btn btn-primary btn-sm"
+                    onclick="savePart(true, '{% if next_idx < part_ids_list|length %}{{ url_for('preparer.schedule_c_edit', user_id=user.id, year=year, part=part_ids_list[next_idx], business=business_index) }}{% else %}{{ url_for('preparer.client_detail', user_id=user.id, year=year) }}{% endif %}')">
+              Save &amp; Continue &rarr;
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm"
+                    onclick="savePart(false, null)">
+              Save
+            </button>
+            <span class="save-status" id="save-status"></span>
+          </div>
+
+        </div>{# end questions-form #}
+      </div>{# end sch-c-center #}
+
+      <!-- Right guidance panel -->
+      <div class="sch-c-guidance" id="guidance-panel">
+
+        <!-- Net profit summary -->
+        {% set is_loss = summary.net_profit < 0 %}
+        <div class="net-box {% if is_loss %}loss{% endif %}">
+          <div class="net-label">Estimated Net {% if is_loss %}Loss{% else %}Profit{% endif %}</div>
+          <div class="net-amt">
+            {% if is_loss %}({{ "%.0f"|format(summary.net_profit|abs) }}){% else %}${{ "%.0f"|format(summary.net_profit) }}{% endif %}
+          </div>
+        </div>
+
+        <!-- Auto-detected flags -->
+        {% if flags %}
+        <div class="guidance-title">&#9888; Flags</div>
+        {% for flag in flags %}
+        <div class="flag-card flag-{{ flag.level }}">{{ flag.message }}</div>
+        {% endfor %}
+        {% endif %}
+
+        <!-- IRS instruction for focused field -->
+        <div class="guidance-title mt-3">IRS Instructions</div>
+        <div id="guidance-content">
+          <div style="color:#a0aec0; font-size:.78rem">Click or focus any field to see IRS instruction text.</div>
+        </div>
+
+        <!-- Publication references -->
+        <div class="guidance-pub-refs" id="guidance-pub-refs"></div>
+
+        <!-- Static pub list -->
+        <div class="guidance-title mt-3">Key Publications</div>
+        {% for pub_id, pub_desc in pub_references.items() %}
+        <div class="guidance-pub-ref">
+          <span style="font-weight:700">Pub. {{ pub_id }}</span>
+          <span>{{ pub_desc }}</span>
+        </div>
+        {% endfor %}
+
+      </div>{# end sch-c-guidance #}
+    </div>{# end sch-c-layout #}
+  </div>
+</div>
+
+<script>
+const PART_ID = "{{ part_id }}";
+const YEAR = {{ year }};
+const USER_ID = {{ user.id }};
+const BUSINESS_INDEX = {{ business_index }};
+const SAVE_URL = "{{ url_for('preparer.schedule_c_save_preparer', user_id=user.id, year=year) }}";
+
+let currentAnswers = {{ answers | tojson }};
+let saveTimer = null;
+
+// IRS instruction text from Python config
+const IRS_INSTRUCTIONS = {{ irs_instructions | tojson }};
+const PUB_REFERENCES = {{ pub_references | tojson }};
+
+function evalConditionals() {
+  document.querySelectorAll(".conditional-block").forEach(el => {
+    const key = el.dataset.condKey;
+    const val = el.dataset.condVal;
+    el.style.display = (getFieldValue(key) === val) ? "" : "none";
+  });
+}
+
+function getFieldValue(key) {
+  const radio = document.querySelector(`input[name="${key}"]:checked`);
+  if (radio) return radio.value;
+  const sel = document.getElementById(key);
+  if (sel) return sel.value;
+  const inp = document.querySelector(`input[name="${key}"]`);
+  if (inp) return inp.value;
+  return currentAnswers[key] || "";
+}
+
+function onAnswerChange(key, value) {
+  currentAnswers[key] = value;
+  evalConditionals();
+  scheduleSave();
+}
+
+function toggleHelp(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle("show");
+}
+
+// Guidance panel
+function focusGuidance(key, labelEl) {
+  const irsText = IRS_INSTRUCTIONS[key] || "";
+  const block = document.getElementById("qblock_" + key);
+  const pubRefsStr = block ? block.dataset.pubRefs : "";
+  const pubRefs = pubRefsStr ? pubRefsStr.split(",").filter(Boolean) : [];
+  const irsRef = block ? block.dataset.irsRef : "";
+
+  const contentEl = document.getElementById("guidance-content");
+  const pubEl = document.getElementById("guidance-pub-refs");
+
+  if (irsText) {
+    contentEl.innerHTML = `<div class="guidance-field-name">${irsRef}</div>
+      <div class="guidance-irs-text">${irsText}</div>`;
+  } else if (irsRef) {
+    contentEl.innerHTML = `<div class="guidance-field-name">${irsRef}</div>
+      <div style="color:#a0aec0;font-size:.78rem">No specific instruction text available.</div>`;
+  } else {
+    contentEl.innerHTML = `<div style="color:#a0aec0;font-size:.78rem">No instruction text for this field.</div>`;
+  }
+
+  if (pubRefs.length) {
+    pubEl.innerHTML = "<div style='font-size:.7rem;font-weight:700;color:#2c5282;margin-bottom:4px'>Relevant Publications</div>" +
+      pubRefs.map(p => {
+        const desc = PUB_REFERENCES[p] || "";
+        return `<div style="font-size:.75rem;color:#2c5282;margin-bottom:3px">
+          <strong>Pub. ${p}</strong> — ${desc}
+        </div>`;
+      }).join("");
+  } else {
+    pubEl.innerHTML = "";
+  }
+}
+
+// Other expenses
+function addExpRow() {
+  const list = document.getElementById("other-exp-list");
+  if (!list) return;
+  const row = document.createElement("div");
+  row.className = "other-exp-row";
+  row.innerHTML = `<input type="text" placeholder="Description" class="other-desc">
+    <input type="number" step="0.01" min="0" placeholder="Amount" class="other-amt">
+    <button type="button" class="remove-exp" onclick="removeExpRow(this)">&times;</button>`;
+  list.appendChild(row);
+}
+
+function removeExpRow(btn) {
+  btn.closest(".other-exp-row").remove();
+  scheduleSave();
+}
+
+function collectOtherExpenses() {
+  const items = [];
+  document.querySelectorAll("#other-exp-list .other-exp-row").forEach(row => {
+    const desc = row.querySelector(".other-desc")?.value?.trim();
+    const amt = parseFloat(row.querySelector(".other-amt")?.value || "0");
+    if (desc) items.push({ description: desc, amount: amt || 0 });
+  });
+  return items;
+}
+
+function collectAnswers() {
+  const data = Object.assign({}, currentAnswers);
+  document.querySelectorAll("input[type=radio]:checked").forEach(r => { data[r.name] = r.value; });
+  document.querySelectorAll("input[type=text], input[type=number], input[type=date]").forEach(inp => {
+    if (inp.name && inp.name !== "" && !inp.classList.contains("other-desc") && !inp.classList.contains("other-amt")) {
+      if (inp.value !== "") data[inp.name] = inp.value;
+    }
+  });
+  document.querySelectorAll("select").forEach(sel => { if (sel.name && sel.value) data[sel.name] = sel.value; });
+  const expList = document.getElementById("other-exp-list");
+  if (expList) data["other_expenses"] = collectOtherExpenses();
+  return data;
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => doSave(false, null), 1500);
+}
+
+function setStatus(msg, ok) {
+  const el = document.getElementById("save-status");
+  if (el) { el.textContent = msg; el.style.color = ok ? "#38a169" : "#e53e3e"; }
+}
+
+async function doSave(complete, redirectUrl) {
+  clearTimeout(saveTimer);
+  const answers = collectAnswers();
+  setStatus("Saving…", true);
+  try {
+    const resp = await fetch(SAVE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ part_id: PART_ID, business_index: BUSINESS_INDEX, answers, completed: complete }),
+    });
+    const json = await resp.json();
+    if (json.ok) {
+      setStatus("Saved", true);
+      if (redirectUrl) window.location.href = redirectUrl;
+    } else {
+      setStatus("Save failed", false);
+    }
+  } catch(e) {
+    setStatus("Save failed", false);
+  }
+}
+
+function savePart(complete, redirectUrl) {
+  doSave(complete, redirectUrl);
+}
+
+document.addEventListener("DOMContentLoaded", () => { evalConditionals(); });
+</script>
+{% endblock %}

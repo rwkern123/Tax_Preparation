@@ -221,6 +221,7 @@ def _build_1040_fields(agg: dict, user: dict) -> dict[int, dict[str, str]]:
         "f1_60[0]": _fmt(qual_div),
         "f1_61[0]": _fmt(ord_div),
         "f1_70[0]": _fmt(cap_gain, sign=True),
+        "f1_71[0]": _fmt(lines.get("line_8"), sign=True),
         "f1_72[0]": _fmt(total_inc),
         "f1_74[0]": _fmt(agi),
         "f1_75[0]": _fmt(line_12),
@@ -468,7 +469,8 @@ def _build_schd_fields(agg: dict, user: dict) -> dict[int, dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 def aggregate_1040_data(parsed_docs: list[dict], user: dict, year: int,
-                        manual_entries: list[dict] | None = None) -> dict:
+                        manual_entries: list[dict] | None = None,
+                        schedule_c_summary: dict | None = None) -> dict:
     w2_wages        = 0.0
     w2_withheld     = 0.0
     interest        = 0.0
@@ -603,11 +605,18 @@ def aggregate_1040_data(parsed_docs: list[dict], user: dict, year: int,
         if amt > 0 and "Manual entry" not in charitable_sources:
             charitable_sources.append("Manual entry")
 
+    # Schedule C net profit from interview
+    se_net = 0.0
+    if schedule_c_summary and schedule_c_summary.get("net_profit") is not None:
+        se_net = float(schedule_c_summary["net_profit"])
+        if se_net:
+            has_any = True
+
     if not has_any:
         return {}
 
     total_withheld = w2_withheld + b_withheld
-    total_income   = w2_wages + interest + ord_dividends + cap_gain
+    total_income   = w2_wages + interest + ord_dividends + cap_gain + se_net
     agi            = total_income
 
     salt_capped   = min(real_estate_tax, 10000.0) if real_estate_tax else 0.0
@@ -629,6 +638,7 @@ def aggregate_1040_data(parsed_docs: list[dict], user: dict, year: int,
         {"key": "line_3a",  "label": "3a — Qualified dividends",                "value": qual_dividends  if b1099_sources else None, "sources": b1099_sources, "sched": None},
         {"key": "line_3b",  "label": "3b — Ordinary dividends",                 "value": ord_dividends   if b1099_sources else None, "sources": b1099_sources, "sched": None},
         {"key": "line_7",   "label": "7 — Capital gain or (loss)",              "value": cap_gain        if b1099_sources else None, "sources": b1099_sources, "sched": None},
+        {"key": "line_8",   "label": "8 — Other income (Schedule 1)",           "value": se_net          if se_net        else None, "sources": ["Schedule C"], "sched": None},
         {"key": "line_9",   "label": "9 — Total income",                        "value": total_income    if has_any       else None, "sources": all_sources,   "sched": None},
         {"key": "line_11",  "label": "11 — Adjusted gross income (AGI)",         "value": agi             if has_any       else None, "sources": [],            "sched": None},
         # ── Tax & Credits (Page 2) — filled in by views.py from TaxEstimate ──
@@ -654,11 +664,20 @@ def aggregate_1040_data(parsed_docs: list[dict], user: dict, year: int,
         {"key": "scha_11",  "label": "Sched A 11 — Charitable (cash)",          "value": charitable_cash    if charitable_cash    else None, "sources": charitable_sources, "sched": "A"},
         {"key": "scha_12",  "label": "Sched A 12 — Charitable (noncash)",       "value": charitable_noncash if charitable_noncash else None, "sources": charitable_sources, "sched": "A"},
         {"key": "scha_17",  "label": "Sched A 17 — Total itemized deductions",  "value": itemized_total  if has_sched_a else None, "sources": [], "sched": "A"},
+        # ── Schedule C detail lines (collapsible) ──
+        {"key": "schc_gross",  "label": "Sched C — Gross receipts",         "value": float(schedule_c_summary["gross_receipts"])  if schedule_c_summary and schedule_c_summary.get("gross_receipts") else None,  "sources": ["Schedule C"], "sched": "C"},
+        {"key": "schc_cogs",   "label": "Sched C — Cost of goods sold",     "value": schedule_c_summary.get("cogs")               if schedule_c_summary else None,                                                  "sources": ["Schedule C"], "sched": "C"},
+        {"key": "schc_gp",     "label": "Sched C — Gross profit",           "value": schedule_c_summary.get("gross_profit")       if schedule_c_summary else None,                                                  "sources": ["Schedule C"], "sched": "C"},
+        {"key": "schc_exp",    "label": "Sched C — Total expenses",         "value": schedule_c_summary.get("total_expenses")     if schedule_c_summary else None,                                                  "sources": ["Schedule C"], "sched": "C"},
+        {"key": "schc_net",    "label": "Sched C — Net profit/(loss)",      "value": se_net                                        if schedule_c_summary else None,                                                  "sources": ["Schedule C"], "sched": "C"},
     ]
 
     return {
         "lines": lines,
         "has_sched_a": has_sched_a,
+        "has_sched_c": bool(schedule_c_summary and schedule_c_summary.get("net_profit") is not None),
+        "has_sched_1": bool(schedule_c_summary and schedule_c_summary.get("net_profit") is not None),
+        "sched_c":     schedule_c_summary or {},
         "has_sched_b": has_sched_b,
         "has_sched_d": has_sched_d,
         "occupation_tp": occ_tp,
@@ -690,6 +709,177 @@ def aggregate_1040_data(parsed_docs: list[dict], user: dict, year: int,
             "total_gain_loss": total_gain_loss,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Schedule C field mappings (f1040sc.pdf)
+# ---------------------------------------------------------------------------
+#
+# Page 1 (page 0):
+#   f1_1   Name        f1_2   SSN         f1_3   Business activity
+#   f1_5   Business name               f1_7   Address
+#   f1_10  Line 1 — Gross receipts     f1_11  Line 2 — Returns/allowances
+#   f1_12  Line 3 — Net                f1_13  Line 4 — COGS
+#   f1_14  Line 5 — Gross profit       f1_15  Line 6 — Other income
+#   f1_16  Line 7 — Gross income
+#   f1_17–f1_27  Lines 8–17 (advertising … legal/professional)
+#   f1_28–f1_40  Lines 18–27a (office … other expenses)
+#   f1_41  Line 28 — Total expenses    f1_42  Line 29 — Tentative profit
+#   f1_43  Line 30 — Home office       f1_45  Line 31 — Net profit/(loss)
+# Page 2 (page 1):
+#   f2_2–f2_9   Part III COGS detail
+#   f2_15/f2_16 … f2_31/f2_32  Part V other expense rows (up to 9)
+#   f2_33  Part V total
+
+def _build_schc_fields(agg: dict, user: dict) -> dict[int, dict[str, str]]:
+    sc = agg.get("sched_c", {})
+
+    def _m(key) -> float | None:
+        try:
+            v = float(sc.get(key) or 0)
+            return v if v else None
+        except (TypeError, ValueError):
+            return None
+
+    first = user.get("first_name", "")
+    last  = user.get("last_name", "")
+    ssn   = _fmt_ssn(user.get("ssn", ""))
+
+    gross_receipts = _m("gross_receipts")
+    returns_allow  = _m("returns_allowances")
+    net_receipts   = ((gross_receipts or 0) - (returns_allow or 0)) or None
+    cogs_val       = sc.get("cogs")
+    gross_profit   = sc.get("gross_profit")
+    other_income   = _m("other_income")
+    gross_income   = sc.get("gross_income")
+    total_expenses = sc.get("total_expenses")
+    net_profit     = sc.get("net_profit")
+
+    tentative = (float(gross_income or 0) - float(total_expenses or 0)) if (gross_income is not None and total_expenses is not None) else None
+
+    # Home office — simplified method only (actual method uses Form 8829)
+    home_office = None
+    if sc.get("home_office_use") == "yes" and sc.get("home_office_method") == "simplified":
+        try:
+            sq_ft = min(float(sc.get("home_office_sqft") or 0), 300)
+            home_office = sq_ft * 5.0 or None
+        except (TypeError, ValueError):
+            pass
+
+    # Other expenses list
+    other_exp_list  = sc.get("other_expenses") or []
+    other_exp_total = 0.0
+    if isinstance(other_exp_list, list):
+        for item in other_exp_list:
+            try:
+                other_exp_total += float(item.get("amount") or 0)
+            except (TypeError, ValueError):
+                pass
+
+    page0: dict[str, str] = {
+        "f1_1[0]":  f"{first} {last}".strip(),
+        "f1_2[0]":  ssn,
+        "f1_3[0]":  sc.get("business_activity", ""),
+        "f1_5[0]":  sc.get("business_name", ""),
+        "f1_7[0]":  sc.get("business_address", ""),
+        # Income
+        "f1_10[0]": _fmt(gross_receipts),
+        "f1_11[0]": _fmt(returns_allow),
+        "f1_12[0]": _fmt(net_receipts),
+        "f1_13[0]": _fmt(cogs_val),
+        "f1_14[0]": _fmt(gross_profit),
+        "f1_15[0]": _fmt(other_income),
+        "f1_16[0]": _fmt(gross_income),
+        # Expenses lines 8–17
+        "f1_17[0]": _fmt(_m("advertising")),
+        "f1_18[0]": _fmt(_m("car_truck")),
+        "f1_19[0]": _fmt(_m("commissions_fees")),
+        "f1_20[0]": _fmt(_m("contract_labor")),
+        "f1_21[0]": _fmt(_m("depletion")),
+        "f1_22[0]": _fmt(_m("depreciation")),
+        "f1_23[0]": _fmt(_m("employee_benefits")),
+        "f1_24[0]": _fmt(_m("insurance")),
+        "f1_25[0]": _fmt(_m("mortgage_interest")),
+        "f1_26[0]": _fmt(_m("other_interest")),
+        "f1_27[0]": _fmt(_m("legal_professional")),
+        # Expenses lines 18–27
+        "f1_28[0]": _fmt(_m("office_expense")),
+        "f1_29[0]": _fmt(_m("pension_profit_sharing")),
+        "f1_30[0]": _fmt(_m("rent_vehicle")),
+        "f1_31[0]": _fmt(_m("rent_other")),
+        "f1_32[0]": _fmt(_m("repairs_maintenance")),
+        "f1_33[0]": _fmt(_m("supplies")),
+        "f1_34[0]": _fmt(_m("taxes_licenses")),
+        "f1_35[0]": _fmt(_m("travel")),
+        "f1_36[0]": _fmt(_m("meals")),
+        "f1_37[0]": _fmt(_m("utilities")),
+        "f1_38[0]": _fmt(_m("wages")),
+        "f1_40[0]": _fmt(other_exp_total if other_exp_total else None),
+        # Totals
+        "f1_41[0]": _fmt(total_expenses),
+        "f1_42[0]": _fmt(tentative, sign=True),
+        "f1_43[0]": _fmt(home_office),
+        "f1_45[0]": _fmt(net_profit, sign=True),
+    }
+
+    # Accounting method checkbox
+    acct = sc.get("accounting_method", "cash")
+    if acct == "cash":
+        page0["c1_1[0]"] = "/Yes"
+    elif acct == "accrual":
+        page0["c1_1[1]"] = "/Yes"
+
+    # Page 2: COGS (Part III) + other expenses (Part V)
+    page1: dict[str, str] = {}
+    if sc.get("has_cogs") == "yes":
+        page1.update({
+            "f2_2[0]": _fmt(_m("beginning_inventory")),
+            "f2_3[0]": _fmt(_m("purchases")),
+            "f2_4[0]": _fmt(_m("cost_of_labor")),
+            "f2_5[0]": _fmt(_m("materials_supplies_cogs")),
+            "f2_7[0]": _fmt(_m("ending_inventory")),
+            "f2_9[0]": _fmt(cogs_val),
+        })
+
+    for i, item in enumerate(other_exp_list[:9]):
+        desc = str(item.get("description", ""))
+        amt  = float(item.get("amount") or 0)
+        if desc:
+            page1[f"f2_{15 + i * 2}[0]"] = desc[:30]
+        if amt:
+            page1[f"f2_{16 + i * 2}[0]"] = _fmt(amt)
+
+    if other_exp_total:
+        page1["f2_33[0]"] = _fmt(other_exp_total)
+
+    return {0: page0, 1: page1}
+
+
+# ---------------------------------------------------------------------------
+# Schedule 1 field mappings (f1040s1.pdf)
+# ---------------------------------------------------------------------------
+#
+# Page 1:
+#   f1_01  Name        f1_02  SSN
+#   f1_06  Line 3 — Business income or (loss) from Schedule C
+#   f1_36  Line 10 — Total additional income
+
+def _build_sch1_fields(agg: dict, user: dict) -> dict[int, dict[str, str]]:
+    sc = agg.get("sched_c", {})
+    net_profit = sc.get("net_profit")
+
+    first = user.get("first_name", "")
+    last  = user.get("last_name", "")
+    ssn   = _fmt_ssn(user.get("ssn", ""))
+
+    page0: dict[str, str] = {
+        "f1_01[0]": f"{first} {last}".strip(),
+        "f1_02[0]": ssn,
+        "f1_06[0]": _fmt(net_profit, sign=True),   # Line 3 — Schedule C
+        "f1_36[0]": _fmt(net_profit, sign=True),   # Line 10 — Total additional income
+    }
+
+    return {0: page0}
 
 
 # ---------------------------------------------------------------------------
@@ -735,6 +925,18 @@ def _do_fill(data: dict, pdf_forms_dir: str) -> bytes:
         if Path(schd_path).exists():
             schd_fields = _build_schd_fields(data, user)
             all_pdfs.append(_fill_schedule_flat(schd_path, schd_fields))
+
+    if data.get("has_sched_c"):
+        schc_path = str(forms_dir / "f1040sc.pdf")
+        if Path(schc_path).exists():
+            schc_fields = _build_schc_fields(data, user)
+            all_pdfs.append(_fill_schedule_flat(schc_path, schc_fields))
+
+    if data.get("has_sched_1"):
+        sch1_path = str(forms_dir / "f1040s1.pdf")
+        if Path(sch1_path).exists():
+            sch1_fields = _build_sch1_fields(data, user)
+            all_pdfs.append(_fill_schedule_flat(sch1_path, sch1_fields))
 
     if len(all_pdfs) == 1:
         return all_pdfs[0]

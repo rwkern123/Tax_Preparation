@@ -64,6 +64,19 @@ CREATE TABLE IF NOT EXISTS uploads (
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS schedule_c_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    tax_year INTEGER NOT NULL,
+    business_index INTEGER NOT NULL DEFAULT 0,
+    part TEXT NOT NULL,
+    answers TEXT NOT NULL DEFAULT '{}',
+    last_saved TEXT NOT NULL DEFAULT (datetime('now')),
+    completed INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (user_id, tax_year, business_index, part),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
 """
 
 
@@ -286,5 +299,94 @@ def delete_upload(db_path: str, upload_id: int, user_id: int) -> dict | None:
             conn.commit()
             return dict(row)
         return None
+    finally:
+        conn.close()
+
+
+def save_schedule_c_part(db_path: str, user_id: int, tax_year: int,
+                         business_index: int, part: str,
+                         answers: dict, completed: bool = False) -> None:
+    last_saved = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db(db_path)
+    try:
+        conn.execute(
+            """INSERT INTO schedule_c_responses
+               (user_id, tax_year, business_index, part, answers, last_saved, completed)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(user_id, tax_year, business_index, part) DO UPDATE SET
+                 answers=excluded.answers,
+                 last_saved=excluded.last_saved,
+                 completed=excluded.completed""",
+            (user_id, tax_year, business_index, part,
+             json.dumps(answers), last_saved, 1 if completed else 0)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_schedule_c_responses(db_path: str, user_id: int, tax_year: int,
+                              business_index: int = 0) -> dict:
+    """
+    Return dict keyed by part id, value is the stored answers dict.
+    e.g. {"intro": {...}, "part1": {...}}
+    """
+    conn = get_db(db_path)
+    try:
+        rows = conn.execute(
+            """SELECT part, answers, completed FROM schedule_c_responses
+               WHERE user_id = ? AND tax_year = ? AND business_index = ?""",
+            (user_id, tax_year, business_index)
+        ).fetchall()
+        result = {}
+        for row in rows:
+            result[row["part"]] = {
+                "answers": json.loads(row["answers"]),
+                "completed": bool(row["completed"]),
+            }
+        return result
+    finally:
+        conn.close()
+
+
+def get_schedule_c_progress(db_path: str, user_id: int, tax_year: int) -> dict:
+    """
+    Return progress summary across all businesses.
+    Returns: {business_index: {completed_parts: int, total_parts: int, parts: {part_id: bool}}}
+    """
+    from portal.schedule_c_interview import get_part_ids
+    total_parts = len(get_part_ids())
+    conn = get_db(db_path)
+    try:
+        rows = conn.execute(
+            """SELECT business_index, part, completed FROM schedule_c_responses
+               WHERE user_id = ? AND tax_year = ?
+               ORDER BY business_index, part""",
+            (user_id, tax_year)
+        ).fetchall()
+        progress = {}
+        for row in rows:
+            bi = row["business_index"]
+            if bi not in progress:
+                progress[bi] = {"completed_parts": 0, "total_parts": total_parts, "parts": {}}
+            progress[bi]["parts"][row["part"]] = bool(row["completed"])
+            if row["completed"]:
+                progress[bi]["completed_parts"] += 1
+        return progress
+    finally:
+        conn.close()
+
+
+def get_schedule_c_business_count(db_path: str, user_id: int, tax_year: int) -> int:
+    """Return the number of distinct business_index values for this user/year."""
+    conn = get_db(db_path)
+    try:
+        row = conn.execute(
+            """SELECT COUNT(DISTINCT business_index) as cnt FROM schedule_c_responses
+               WHERE user_id = ? AND tax_year = ?""",
+            (user_id, tax_year)
+        ).fetchone()
+        count = row["cnt"] if row else 0
+        return max(count, 1)
     finally:
         conn.close()

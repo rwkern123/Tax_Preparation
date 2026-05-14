@@ -1873,9 +1873,13 @@
 
   {# ════════════════════════════════════════ TAB: Questionnaire ════ #}
   <div class="tab-pane fade" id="tab-questionnaire">
-    <div class="mb-3">
+    <div class="mb-3 d-flex gap-2 flex-wrap">
       <a href="{{ url_for('preparer.edit_questionnaire', user_id=user.id, year=year) }}"
          class="btn btn-sm btn-outline-dark">Edit Questionnaire</a>
+      {% if questionnaire and questionnaire.answers.get('self_employment') == 'yes' %}
+      <a href="{{ url_for('preparer.schedule_c_edit', user_id=user.id, year=year) }}"
+         class="btn btn-sm btn-outline-primary">&#128188; Schedule C Interview</a>
+      {% endif %}
     </div>
     {% if not questionnaire %}
       <div class="alert alert-info">The questionnaire has not been started yet. Click "Edit Questionnaire" to fill it in.</div>
@@ -2167,6 +2171,50 @@
                     <td class="small">{{ ref.label }}</td>
                     {% for col in year_columns %}
                       {% set entry = col.sched_lines_dict.get(ref.label) %}
+                      <td class="text-end amount {{ 'fw-semibold' if col.is_current }}">
+                        {{ entry.value | fmt_amount if (entry and entry.value is not none) else '—' }}
+                      </td>
+                    {% endfor %}
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if ref_schedc_lines %}
+      <div class="mb-3">
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#schedCCollapse">
+          Schedule C &mdash; Self-Employment Profit/(Loss)
+        </button>
+        <div class="collapse mt-2" id="schedCCollapse">
+          <div class="card shadow-sm">
+            <div class="card-header py-2 fw-semibold small d-flex justify-content-between align-items-center">
+              <span>Schedule C</span>
+              <a href="{{ url_for('preparer.schedule_c_edit', user_id=user.id, year=year) }}"
+                 class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:.75rem">Edit Interview</a>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th style="min-width:260px">Line / Description</th>
+                    {% for col in year_columns %}
+                    <th class="text-end {{ 'fw-bold' if col.is_current }}" style="min-width:110px">{{ col.year }}</th>
+                    {% endfor %}
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for ref in ref_schedc_lines %}
+                  {% set is_net = 'net profit' in ref.label.lower() %}
+                  <tr {% if is_net %}class="table-light fw-semibold"{% endif %}>
+                    <td class="small">{{ ref.label }}</td>
+                    {% for col in year_columns %}
+                      {% set entry = col.schedc_lines_dict.get(ref.label) %}
                       <td class="text-end amount {{ 'fw-semibold' if col.is_current }}">
                         {{ entry.value | fmt_amount if (entry and entry.value is not none) else '—' }}
                       </td>

@@ -1,0 +1,566 @@
+{% extends "base.html" %}
+{% block title %}Schedule C Interview {{ year }} — Tax Portal{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" crossorigin="anonymous">
+<style>
+  .sch-c-layout { display:flex; gap:0; min-height:80vh; }
+  .sch-c-sidebar {
+    width:240px; flex-shrink:0;
+    background:#1e3a5f; color:#fff;
+    padding:20px 0; border-radius:8px 0 0 8px;
+  }
+  .sch-c-sidebar .sidebar-title {
+    font-size:.75rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:.08em; color:#a0b4cc; padding:0 18px 12px;
+    border-bottom:1px solid #2c5282; margin-bottom:8px;
+  }
+  .sch-c-sidebar .nav-item a {
+    display:flex; align-items:center; gap:8px;
+    padding:9px 18px; color:#cbd5e0; text-decoration:none;
+    font-size:.875rem; border-left:3px solid transparent;
+    transition:background .15s;
+  }
+  .sch-c-sidebar .nav-item a:hover { background:#2c5282; color:#fff; }
+  .sch-c-sidebar .nav-item a.active {
+    background:#2c5282; color:#fff; border-left-color:#63b3ed;
+  }
+  .sch-c-sidebar .nav-item a .check {
+    width:18px; height:18px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:.65rem; flex-shrink:0;
+  }
+  .check-done { background:#48bb78; color:#fff; }
+  .check-todo { background:#4a5568; color:#a0aec0; }
+  .sch-c-main {
+    flex:1; background:#fff; padding:28px 32px;
+    border-radius:0 8px 8px 0;
+    border:1px solid #e2e8f0; border-left:none;
+  }
+  .progress-bar-wrap { margin-bottom:24px; }
+  .progress-label { font-size:.8rem; color:#718096; margin-bottom:4px; }
+  .progress { height:8px; border-radius:4px; background:#e2e8f0; }
+  .progress-fill { height:8px; border-radius:4px; background:#2c5282; transition:width .4s; }
+  .part-title { font-size:1.25rem; font-weight:700; color:#1e3a5f; margin-bottom:4px; }
+  .part-subtitle { color:#718096; font-size:.9rem; margin-bottom:24px; }
+  .q-group-label {
+    font-size:.7rem; text-transform:uppercase; letter-spacing:.08em;
+    color:#2c5282; font-weight:700; margin:20px 0 10px;
+    padding-bottom:4px; border-bottom:1px solid #bee3f8;
+  }
+  .q-block { margin-bottom:18px; }
+  .q-block label.q-label { font-size:.9rem; color:#2d3748; margin-bottom:6px; display:block; }
+  .q-block .q-help-toggle {
+    font-size:.75rem; color:#3182ce; cursor:pointer;
+    text-decoration:underline; margin-left:6px;
+  }
+  .q-help-text {
+    background:#ebf8ff; border-left:3px solid #63b3ed;
+    padding:8px 12px; border-radius:4px;
+    font-size:.82rem; color:#2c5282; margin-top:6px; margin-bottom:8px;
+    display:none;
+  }
+  .q-help-text.show { display:block; }
+  .yn-row { display:flex; gap:16px; }
+  .yn-row label { display:flex; align-items:center; gap:6px; font-size:.9rem; cursor:pointer; }
+  .money-input { position:relative; }
+  .money-input::before {
+    content:"$"; position:absolute; left:10px; top:50%; transform:translateY(-50%);
+    color:#718096; font-size:.9rem;
+  }
+  .money-input input { padding-left:22px; }
+  input[type=text], input[type=number], input[type=date], select, textarea {
+    border:1px solid #cbd5e0; border-radius:5px; padding:7px 10px;
+    font-size:.9rem; width:100%; max-width:400px;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline:none; border-color:#3182ce; box-shadow:0 0 0 3px rgba(49,130,206,.15);
+  }
+  .doc-hint-zone {
+    background:#f0fff4; border:1px dashed #68d391; border-radius:6px;
+    padding:10px 14px; margin-top:6px; font-size:.82rem; color:#276749;
+  }
+  .doc-hint-zone .hint-title { font-weight:600; margin-bottom:2px; }
+  .hint-uploaded { color:#276749; font-size:.78rem; }
+  .hint-upload-btn { font-size:.78rem; }
+  .action-row { display:flex; gap:12px; margin-top:32px; padding-top:20px; border-top:1px solid #e2e8f0; }
+  .other-exp-row { display:flex; gap:8px; align-items:flex-start; margin-bottom:8px; }
+  .other-exp-row input[type=text] { flex:1; max-width:none; }
+  .other-exp-row input[type=number] { width:130px; max-width:130px; }
+  .remove-exp { color:#e53e3e; background:none; border:none; cursor:pointer; font-size:1.1rem; }
+  .suggestions-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .suggestion-chip {
+    background:#edf2f7; border:1px solid #cbd5e0; border-radius:20px;
+    padding:3px 10px; font-size:.78rem; color:#4a5568; cursor:pointer;
+  }
+  .suggestion-chip:hover { background:#bee3f8; border-color:#90cdf4; }
+  .business-tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .business-tab {
+    padding:5px 14px; border-radius:5px; font-size:.82rem;
+    border:1px solid #cbd5e0; background:#f7fafc; color:#4a5568;
+    text-decoration:none;
+  }
+  .business-tab.active { background:#1e3a5f; color:#fff; border-color:#1e3a5f; }
+  .save-status { font-size:.78rem; color:#718096; margin-top:6px; }
+  .conditional-block { display:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding:24px 20px 60px">
+  <div style="max-width:1100px; margin:0 auto">
+
+    <!-- Header -->
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <a href="{{ url_for('portal.year_detail', year=year) }}"
+         class="btn btn-outline-secondary btn-sm">&larr; Back to {{ year }} Overview</a>
+      <h4 class="fw-bold mb-0" style="color:#1e3a5f">
+        Schedule C Interview &mdash; TY {{ year }}
+      </h4>
+    </div>
+
+    <!-- Business tabs (multiple businesses) -->
+    {% if business_count > 1 %}
+    <div class="business-tabs">
+      {% for bi in range(business_count) %}
+      <a href="{{ url_for('portal.schedule_c_part', year=year, part_id=part_id, business=bi) }}"
+         class="business-tab {% if bi == business_index %}active{% endif %}">
+        Business {{ bi + 1 }}
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Two-column layout -->
+    <div class="sch-c-layout">
+
+      <!-- Sidebar nav -->
+      <div class="sch-c-sidebar">
+        <div class="sidebar-title">Interview Steps</div>
+        {% for np in nav_parts %}
+        <div class="nav-item">
+          <a href="{{ url_for('portal.schedule_c_part', year=year, part_id=np.id, business=business_index) }}"
+             class="{% if np.active %}active{% endif %}">
+            <span class="check {% if np.completed %}check-done{% else %}check-todo{% endif %}">
+              {% if np.completed %}&#10003;{% else %}&bull;{% endif %}
+            </span>
+            {{ np.title }}
+          </a>
+        </div>
+        {% endfor %}
+        <div class="nav-item mt-3">
+          <a href="{{ url_for('portal.schedule_c_review', year=year, business=business_index) }}">
+            <span class="check check-todo">&#9654;</span>
+            Review &amp; Summary
+          </a>
+        </div>
+      </div>
+
+      <!-- Main content -->
+      <div class="sch-c-main">
+
+        <!-- Progress bar -->
+        <div class="progress-bar-wrap">
+          <div class="progress-label">{{ progress_pct }}% complete</div>
+          <div class="progress">
+            <div class="progress-fill" style="width:{{ progress_pct }}%"></div>
+          </div>
+        </div>
+
+        <div class="part-title">{{ part.title }}</div>
+        <div class="part-subtitle">{{ part.subtitle }}</div>
+
+        <!-- Questions form -->
+        <div id="questions-form">
+          {% set current_group = namespace(name='') %}
+          {% for q in part.questions %}
+
+            {% if q.group is defined and q.group != current_group.name %}
+              {% set current_group.name = q.group %}
+              <div class="q-group-label">{{ q.group }}</div>
+            {% endif %}
+
+            {% set is_conditional = q.conditional is defined %}
+            <div class="q-block {% if is_conditional %}conditional-block{% endif %}"
+                 id="qblock_{{ q.key }}"
+                 {% if is_conditional %}
+                 data-cond-key="{{ q.conditional.key }}"
+                 data-cond-val="{{ q.conditional.value }}"
+                 {% endif %}>
+
+              <label class="q-label">
+                {{ q.label }}
+                {% if q.required %}<span style="color:#e53e3e">*</span>{% endif %}
+                <span class="q-help-toggle" onclick="toggleHelp('help_{{ q.key }}')">? Why</span>
+              </label>
+
+              <div class="q-help-text" id="help_{{ q.key }}">{{ q.help_text }}</div>
+
+              {# --- yes_no --- #}
+              {% if q.type == 'yes_no' %}
+              <div class="yn-row">
+                <label>
+                  <input type="radio" name="{{ q.key }}" value="yes"
+                         {% if answers.get(q.key) == 'yes' %}checked{% endif %}
+                         onchange="onAnswerChange('{{ q.key }}', 'yes')">
+                  Yes
+                </label>
+                <label>
+                  <input type="radio" name="{{ q.key }}" value="no"
+                         {% if answers.get(q.key) == 'no' %}checked{% endif %}
+                         onchange="onAnswerChange('{{ q.key }}', 'no')">
+                  No
+                </label>
+              </div>
+
+              {# --- money --- #}
+              {% elif q.type == 'money' %}
+              <div class="money-input">
+                <input type="number" step="0.01" min="0"
+                       id="{{ q.key }}" name="{{ q.key }}"
+                       value="{{ answers.get(q.key, '') }}"
+                       placeholder="{{ q.placeholder if q.placeholder is defined else '0.00' }}"
+                       oninput="onAnswerChange('{{ q.key }}', this.value)">
+              </div>
+
+              {# --- number --- #}
+              {% elif q.type == 'number' %}
+              <input type="number" step="1" min="0"
+                     id="{{ q.key }}" name="{{ q.key }}"
+                     value="{{ answers.get(q.key, '') }}"
+                     placeholder="{{ q.placeholder if q.placeholder is defined else '' }}"
+                     oninput="onAnswerChange('{{ q.key }}', this.value)">
+
+              {# --- date --- #}
+              {% elif q.type == 'date' %}
+              <input type="date"
+                     id="{{ q.key }}" name="{{ q.key }}"
+                     value="{{ answers.get(q.key, '') }}"
+                     onchange="onAnswerChange('{{ q.key }}', this.value)">
+
+              {# --- select --- #}
+              {% elif q.type == 'select' %}
+              <select id="{{ q.key }}" name="{{ q.key }}"
+                      onchange="onAnswerChange('{{ q.key }}', this.value)">
+                <option value="">— Select —</option>
+                {% for opt in q.options %}
+                <option value="{{ opt.value }}"
+                        {% if answers.get(q.key) == opt.value %}selected{% endif %}>
+                  {{ opt.label }}
+                </option>
+                {% endfor %}
+              </select>
+
+              {# --- text --- #}
+              {% elif q.type == 'text' %}
+              <input type="text"
+                     id="{{ q.key }}" name="{{ q.key }}"
+                     value="{{ answers.get(q.key, '') }}"
+                     placeholder="{{ q.placeholder if q.placeholder is defined else '' }}"
+                     oninput="onAnswerChange('{{ q.key }}', this.value)">
+
+              {# --- other_expenses (Part V) --- #}
+              {% elif q.type == 'other_expenses' %}
+              <div id="other-exp-list">
+                {% set saved_items = answers.get(q.key, []) %}
+                {% if saved_items %}
+                  {% for item in saved_items %}
+                  <div class="other-exp-row">
+                    <input type="text" placeholder="Description" value="{{ item.description }}" class="other-desc">
+                    <input type="number" step="0.01" min="0" placeholder="Amount" value="{{ item.amount }}" class="other-amt">
+                    <button type="button" class="remove-exp" onclick="removeExpRow(this)">&times;</button>
+                  </div>
+                  {% endfor %}
+                {% else %}
+                  <div class="other-exp-row">
+                    <input type="text" placeholder="Description" class="other-desc">
+                    <input type="number" step="0.01" min="0" placeholder="Amount" class="other-amt">
+                    <button type="button" class="remove-exp" onclick="removeExpRow(this)">&times;</button>
+                  </div>
+                {% endif %}
+              </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm mt-2"
+                      onclick="addExpRow()">+ Add another expense</button>
+              {% if q.suggestions is defined %}
+              <div class="mt-2 text-muted" style="font-size:.8rem">Quick add:</div>
+              <div class="suggestions-list">
+                {% for sug in q.suggestions %}
+                <span class="suggestion-chip" onclick="addSuggestion('{{ sug }}')">{{ sug }}</span>
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% endif %}
+
+              {# Per-question doc hint #}
+              {% if q.doc_hint is defined %}
+              {% set dh = q.doc_hint %}
+              {% set cat_uploads = uploads_by_cat.get(dh.category, []) %}
+              <div class="doc-hint-zone mt-2
+                {% if q.conditional is defined %} hint-conditional
+                  data-hint-cond-key='{{ q.conditional.key }}'
+                  data-hint-cond-val='{{ q.conditional.value }}'
+                {% endif %}">
+                <div class="hint-title">&#128206; {{ dh.label }}</div>
+                <div class="text-muted" style="font-size:.78rem">{{ dh.description }}</div>
+                {% if cat_uploads %}
+                  {% for u in cat_uploads %}
+                  <div class="hint-uploaded mt-1">&#10003; {{ u.original_name }}</div>
+                  {% endfor %}
+                {% else %}
+                <form method="post"
+                      action="{{ url_for('portal.upload_file', year=year, category=dh.category) }}"
+                      enctype="multipart/form-data" class="mt-1 d-flex gap-2 align-items-center">
+                  <input type="file" name="file" class="form-control form-control-sm" style="max-width:260px">
+                  <button type="submit" class="btn btn-sm btn-outline-primary hint-upload-btn">Upload</button>
+                </form>
+                {% endif %}
+              </div>
+              {% endif %}
+
+            </div>{# end q-block #}
+          {% endfor %}
+
+          {# Part-level doc hints (at bottom of part) #}
+          {% if doc_hints %}
+          <div style="border-top:1px solid #e2e8f0; margin-top:28px; padding-top:20px">
+            <div style="font-size:.85rem; font-weight:600; color:#2c5282; margin-bottom:12px">
+              Documents for this section
+            </div>
+            {% for dh in doc_hints %}
+            {% set cat_uploads = uploads_by_cat.get(dh.category, []) %}
+            <div class="doc-hint-zone mb-2">
+              <div class="hint-title">&#128206; {{ dh.label }}</div>
+              <div class="text-muted" style="font-size:.78rem">{{ dh.description }}</div>
+              {% if cat_uploads %}
+                {% for u in cat_uploads %}
+                <div class="hint-uploaded mt-1">&#10003; {{ u.original_name }}</div>
+                {% endfor %}
+              {% else %}
+              <form method="post"
+                    action="{{ url_for('portal.upload_file', year=year, category=dh.category) }}"
+                    enctype="multipart/form-data" class="mt-1 d-flex gap-2 align-items-center">
+                <input type="file" name="file" class="form-control form-control-sm" style="max-width:260px">
+                <button type="submit" class="btn btn-sm btn-outline-primary hint-upload-btn">Upload</button>
+              </form>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <!-- Action buttons -->
+          <div class="action-row">
+            {% set part_ids_list = part_ids %}
+            {% set current_idx = namespace(val=0) %}
+            {% for pid in part_ids_list %}{% if pid == part_id %}{% set current_idx.val = loop.index0 %}{% endif %}{% endfor %}
+            {% set next_idx = current_idx.val + 1 %}
+
+            <button type="button" class="btn btn-primary"
+                    onclick="savePart(false, '{% if next_idx < part_ids_list|length %}{{ url_for('portal.schedule_c_part', year=year, part_id=part_ids_list[next_idx], business=business_index) }}{% else %}{{ url_for('portal.schedule_c_review', year=year, business=business_index) }}{% endif %}')">
+              Save &amp; Continue &rarr;
+            </button>
+            <button type="button" class="btn btn-outline-secondary"
+                    onclick="savePart(false, '{{ url_for('portal.year_detail', year=year) }}')">
+              Save &amp; Exit
+            </button>
+            <span class="save-status" id="save-status"></span>
+          </div>
+
+        </div>{# end questions-form #}
+
+        <!-- Add another business -->
+        <div style="margin-top:40px; padding-top:16px; border-top:1px solid #e2e8f0">
+          <form method="post" action="{{ url_for('portal.schedule_c_add_business', year=year) }}"
+                style="display:inline">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+              + Add Another Business (Schedule C)
+            </button>
+          </form>
+        </div>
+
+      </div>{# end sch-c-main #}
+    </div>{# end sch-c-layout #}
+  </div>
+</div>
+
+<script>
+// -----------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------
+const PART_ID = "{{ part_id }}";
+const YEAR = {{ year }};
+const BUSINESS_INDEX = {{ business_index }};
+const SAVE_URL = "{{ url_for('portal.schedule_c_save', year=year) }}";
+
+let currentAnswers = {{ answers | tojson }};
+let saveTimer = null;
+
+// -----------------------------------------------------------------------
+// Conditional visibility
+// -----------------------------------------------------------------------
+function evalConditionals() {
+  document.querySelectorAll(".conditional-block").forEach(el => {
+    const key = el.dataset.condKey;
+    const val = el.dataset.condVal;
+    const input = getFieldValue(key);
+    el.style.display = (input === val) ? "" : "none";
+  });
+}
+
+function getFieldValue(key) {
+  const radio = document.querySelector(`input[name="${key}"]:checked`);
+  if (radio) return radio.value;
+  const sel = document.getElementById(key);
+  if (sel) return sel.value;
+  const inp = document.querySelector(`input[name="${key}"]`);
+  if (inp) return inp.value;
+  return currentAnswers[key] || "";
+}
+
+function onAnswerChange(key, value) {
+  currentAnswers[key] = value;
+  evalConditionals();
+  scheduleSave();
+}
+
+// -----------------------------------------------------------------------
+// Help toggles
+// -----------------------------------------------------------------------
+function toggleHelp(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle("show");
+}
+
+// -----------------------------------------------------------------------
+// Other expenses (Part V)
+// -----------------------------------------------------------------------
+function addExpRow() {
+  const list = document.getElementById("other-exp-list");
+  const row = document.createElement("div");
+  row.className = "other-exp-row";
+  row.innerHTML = `<input type="text" placeholder="Description" class="other-desc">
+    <input type="number" step="0.01" min="0" placeholder="Amount" class="other-amt">
+    <button type="button" class="remove-exp" onclick="removeExpRow(this)">&times;</button>`;
+  list.appendChild(row);
+}
+
+function removeExpRow(btn) {
+  btn.closest(".other-exp-row").remove();
+  scheduleSave();
+}
+
+function addSuggestion(text) {
+  const list = document.getElementById("other-exp-list");
+  const rows = list.querySelectorAll(".other-exp-row");
+  // Find an empty description row first
+  for (const row of rows) {
+    const desc = row.querySelector(".other-desc");
+    if (desc && !desc.value.trim()) {
+      desc.value = text;
+      desc.focus();
+      scheduleSave();
+      return;
+    }
+  }
+  // Otherwise add new row
+  addExpRow();
+  const newRow = list.lastElementChild;
+  newRow.querySelector(".other-desc").value = text;
+  scheduleSave();
+}
+
+function collectOtherExpenses() {
+  const items = [];
+  document.querySelectorAll("#other-exp-list .other-exp-row").forEach(row => {
+    const desc = row.querySelector(".other-desc")?.value?.trim();
+    const amt = parseFloat(row.querySelector(".other-amt")?.value || "0");
+    if (desc) items.push({ description: desc, amount: amt || 0 });
+  });
+  return items;
+}
+
+// -----------------------------------------------------------------------
+// Collect all answers from the DOM
+// -----------------------------------------------------------------------
+function collectAnswers() {
+  const data = Object.assign({}, currentAnswers);
+
+  // Yes/no radios
+  document.querySelectorAll("input[type=radio]:checked").forEach(r => {
+    data[r.name] = r.value;
+  });
+
+  // Text / number / date inputs
+  document.querySelectorAll("input[type=text], input[type=number], input[type=date]").forEach(inp => {
+    if (inp.name && inp.name !== "" && !inp.classList.contains("other-desc") && !inp.classList.contains("other-amt")) {
+      if (inp.value !== "") data[inp.name] = inp.value;
+    }
+  });
+
+  // Selects
+  document.querySelectorAll("select").forEach(sel => {
+    if (sel.name && sel.value) data[sel.name] = sel.value;
+  });
+
+  // Other expenses list
+  const expList = document.getElementById("other-exp-list");
+  if (expList) data["other_expenses"] = collectOtherExpenses();
+
+  return data;
+}
+
+// -----------------------------------------------------------------------
+// Save
+// -----------------------------------------------------------------------
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => doSave(false, null), 1500);
+}
+
+function setStatus(msg, ok) {
+  const el = document.getElementById("save-status");
+  if (el) {
+    el.textContent = msg;
+    el.style.color = ok ? "#38a169" : "#e53e3e";
+  }
+}
+
+async function doSave(complete, redirectUrl) {
+  clearTimeout(saveTimer);
+  const answers = collectAnswers();
+  setStatus("Saving…", true);
+  try {
+    const resp = await fetch(SAVE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        part_id: PART_ID,
+        business_index: BUSINESS_INDEX,
+        answers: answers,
+        completed: complete,
+      }),
+    });
+    const json = await resp.json();
+    if (json.ok) {
+      setStatus("Saved", true);
+      if (redirectUrl) window.location.href = redirectUrl;
+    } else {
+      setStatus("Save failed", false);
+    }
+  } catch(e) {
+    setStatus("Save failed", false);
+  }
+}
+
+function savePart(complete, redirectUrl) {
+  doSave(complete, redirectUrl);
+}
+
+// -----------------------------------------------------------------------
+// Init
+// -----------------------------------------------------------------------
+document.addEventListener("DOMContentLoaded", () => {
+  evalConditionals();
+});
+</script>
+{% endblock %}

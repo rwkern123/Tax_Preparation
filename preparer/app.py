@@ -35,6 +35,9 @@ def create_app(config: dict = None) -> Flask:
     from .database import init_preparer_db
     init_preparer_db(app.config["PREPARER_DB_PATH"])
 
+    from portal.database import init_db as init_portal_db
+    init_portal_db(app.config["PORTAL_DB_PATH"])
+
     from .auth import auth_bp
     from .views import preparer_bp
     app.register_blueprint(auth_bp)

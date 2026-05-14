@@ -296,7 +296,9 @@ def client_detail(user_id: int):
     from .form_1040_filler import aggregate_1040_data
     from src.tax_calculator import calculate_tax_from_docs
     manual_entries = get_manual_entries(_preparer_db(), user_id, year)
-    form_1040_data = aggregate_1040_data(parsed_docs, user, year, manual_entries=manual_entries)
+    sc_summary     = _load_schedule_c_summary(_portal_db(), user_id, year)
+    form_1040_data = aggregate_1040_data(parsed_docs, user, year, manual_entries=manual_entries,
+                                         schedule_c_summary=sc_summary)
     field_overrides = get_field_overrides(_preparer_db(), user_id, year)
 
     num_children = int(user.get("num_dependents") or 0)
@@ -380,9 +382,11 @@ def client_detail(user_id: int):
                 "Sched A 12 — Charitable (noncash)":      {"value": py.get("sched_a_charitable_noncash"), "sources": src},
                 "Sched A 17 — Total itemized deductions": {"value": py.get("sched_a_total_itemized"),     "sources": src},
             }
+            schedc_lines_dict: dict[str, dict] = {}
             y_est = None  # No calculator estimate for prior year return columns
         else:
-            y_f1040 = aggregate_1040_data(y_parsed, user, y, manual_entries=y_manual)
+            y_sc = sc_summary if y == year else None
+            y_f1040 = aggregate_1040_data(y_parsed, user, y, manual_entries=y_manual, schedule_c_summary=y_sc)
             try:
                 y_est = (calculate_tax_from_docs(
                     y_parsed,
@@ -412,29 +416,36 @@ def client_detail(user_id: int):
                         if raw is not None:
                             ln["value"] = raw * ln.get("_est_sign", 1)
 
-            main_lines_dict = {}
+            main_lines_dict  = {}
             sched_lines_dict = {}
+            schedc_lines_dict = {}
             for ln in (y_f1040 or {}).get("lines", []):
                 entry = {"value": ln["value"], "sources": ln.get("sources")}
-                if ln.get("sched"):
+                if ln.get("sched") == "C":
+                    schedc_lines_dict[ln["label"]] = entry
+                elif ln.get("sched"):
                     sched_lines_dict[ln["label"]] = entry
                 else:
                     main_lines_dict[ln["label"]] = entry
 
         year_columns.append({
-            "year":             y,
-            "is_current":       y == year,
-            "tax_estimate":     y_est,
-            "main_lines_dict":  main_lines_dict,
-            "sched_lines_dict": sched_lines_dict,
+            "year":              y,
+            "is_current":        y == year,
+            "tax_estimate":      y_est,
+            "main_lines_dict":   main_lines_dict,
+            "sched_lines_dict":  sched_lines_dict,
+            "schedc_lines_dict": schedc_lines_dict,
             "from_prior_return": py_return_data is not None,
         })
 
     # Reference line order from current year for table headers
-    ref_main_lines:  list[dict] = []
-    ref_sched_lines: list[dict] = []
+    ref_main_lines:   list[dict] = []
+    ref_sched_lines:  list[dict] = []
+    ref_schedc_lines: list[dict] = []
     for ln in (form_1040_data or {}).get("lines", []):
-        if ln.get("sched") == "A":
+        if ln.get("sched") == "C":
+            ref_schedc_lines.append({"label": ln["label"]})
+        elif ln.get("sched") == "A":
             ref_sched_lines.append({"label": ln["label"]})
         elif not ln.get("sched"):
             ref_main_lines.append({"label": ln["label"]})
@@ -459,6 +470,7 @@ def client_detail(user_id: int):
         year_columns=year_columns,
         ref_main_lines=ref_main_lines,
         ref_sched_lines=ref_sched_lines,
+        ref_schedc_lines=ref_schedc_lines,
     )
 
 
@@ -736,6 +748,112 @@ def save_questionnaire_for_client(user_id: int, year: int):
 
 
 # ---------------------------------------------------------------------------
+# Schedule C Interview — Preparer View
+# ---------------------------------------------------------------------------
+
+@preparer_bp.route("/client/<int:user_id>/schedule-c/<int:year>", methods=["GET"])
+@login_required
+def schedule_c_edit(user_id: int, year: int):
+    from portal.database import (
+        get_user_by_id, get_uploads,
+        get_schedule_c_responses, get_schedule_c_business_count,
+        get_schedule_c_progress,
+    )
+    from portal.schedule_c_interview import (
+        SCHEDULE_C_PARTS, get_part_by_id, get_part_ids,
+        compute_net_profit, get_preparer_flags,
+        IRS_INSTRUCTIONS, PUB_REFERENCES, get_inline_doc_hints,
+    )
+
+    user = get_user_by_id(_portal_db(), user_id)
+    if not user:
+        flash("Client not found.", "error")
+        return redirect(url_for("preparer.client_list"))
+
+    part_id = request.args.get("part", "intro")
+    business_index = int(request.args.get("business", 0))
+    part = get_part_by_id(part_id)
+    if not part:
+        return redirect(url_for("preparer.schedule_c_edit", user_id=user_id, year=year, part="intro"))
+
+    part_ids = get_part_ids()
+    responses = get_schedule_c_responses(_portal_db(), user_id, year, business_index)
+
+    all_answers: dict = {}
+    for pid in part_ids:
+        all_answers.update(responses.get(pid, {}).get("answers", {}))
+
+    current_answers = responses.get(part_id, {}).get("answers", {})
+
+    nav_parts = []
+    for pid in part_ids:
+        p = get_part_by_id(pid)
+        nav_parts.append({
+            "id": pid,
+            "title": p["title"],
+            "completed": responses.get(pid, {}).get("completed", False),
+            "active": pid == part_id,
+        })
+    completed_count = sum(1 for np in nav_parts if np["completed"])
+    progress_pct = int(completed_count / len(part_ids) * 100) if part_ids else 0
+    business_count = get_schedule_c_business_count(_portal_db(), user_id, year)
+
+    summary = compute_net_profit(all_answers)
+    flags = get_preparer_flags(all_answers, summary)
+    uploads = get_uploads(_portal_db(), user_id, year)
+    uploads_by_cat = {}
+    for u in uploads:
+        uploads_by_cat.setdefault(u["category"], []).append(u)
+
+    doc_hints = get_inline_doc_hints(part_id, all_answers)
+
+    return render_template(
+        "preparer/schedule_c_edit.html",
+        user=user,
+        year=year,
+        part=part,
+        part_id=part_id,
+        part_ids=part_ids,
+        nav_parts=nav_parts,
+        answers=current_answers,
+        all_answers=all_answers,
+        doc_hints=doc_hints,
+        uploads_by_cat=uploads_by_cat,
+        progress_pct=progress_pct,
+        business_index=business_index,
+        business_count=business_count,
+        summary=summary,
+        flags=flags,
+        irs_instructions=IRS_INSTRUCTIONS,
+        pub_references=PUB_REFERENCES,
+        parts=SCHEDULE_C_PARTS,
+    )
+
+
+@preparer_bp.route("/client/<int:user_id>/schedule-c/<int:year>/save", methods=["POST"])
+@login_required
+def schedule_c_save_preparer(user_id: int, year: int):
+    from portal.database import save_schedule_c_part, get_user_by_id
+    from portal.schedule_c_interview import get_part_by_id
+
+    user = get_user_by_id(_portal_db(), user_id)
+    if not user:
+        return jsonify({"ok": False, "error": "Client not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    part_id = data.get("part_id", "")
+    business_index = int(data.get("business_index", 0))
+    answers = data.get("answers", {})
+    completed = bool(data.get("completed", False))
+
+    if not get_part_by_id(part_id):
+        return jsonify({"ok": False, "error": "Invalid part"}), 400
+
+    save_schedule_c_part(_portal_db(), user_id, year, business_index, part_id, answers, completed)
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # File viewer
 # ---------------------------------------------------------------------------
 
@@ -905,14 +1023,35 @@ def delete_manual_entry_route(user_id: int, year: int, entry_id: int):
     return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
 
 
+def _load_schedule_c_summary(portal_db_path: str, user_id: int, year: int) -> dict | None:
+    try:
+        from portal.database import get_schedule_c_responses
+        from portal.schedule_c_interview import compute_net_profit
+        responses = get_schedule_c_responses(portal_db_path, user_id, year, business_index=0)
+        if not responses:
+            return None
+        all_answers: dict = {}
+        for part_data in responses.values():
+            all_answers.update(part_data.get("answers", {}))
+        summary = compute_net_profit(all_answers)
+        if summary.get("net_profit") is None:
+            return None
+        return {**summary, **all_answers}
+    except Exception:
+        return None
+
+
 def _generate_1040_pdf(user_id: int, year: int) -> bytes:
     from portal.database import get_user_by_id
     from .form_1040_filler import aggregate_1040_data, fill_1040_pdf
 
-    user        = get_user_by_id(_portal_db(), user_id)
-    parsed_docs = get_parsed_documents(_preparer_db(), user_id, year)
+    user           = get_user_by_id(_portal_db(), user_id)
+    parsed_docs    = get_parsed_documents(_preparer_db(), user_id, year)
     manual_entries = get_manual_entries(_preparer_db(), user_id, year)
-    data        = aggregate_1040_data(parsed_docs, user or {}, year, manual_entries=manual_entries)
+    sc_summary     = _load_schedule_c_summary(_portal_db(), user_id, year)
+    data           = aggregate_1040_data(parsed_docs, user or {}, year,
+                                         manual_entries=manual_entries,
+                                         schedule_c_summary=sc_summary)
     data["_user"] = user or {}
     pdf_forms_dir = str(Path(current_app.root_path).parent / "pdf_forms")
     return fill_1040_pdf(data, pdf_forms_dir)

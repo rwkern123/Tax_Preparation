@@ -9,11 +9,18 @@ from flask import (
 from werkzeug.utils import secure_filename
 from .database import (
     get_questionnaire, save_questionnaire, get_uploads,
-    save_upload, delete_upload, get_user_by_id
+    save_upload, delete_upload, get_user_by_id,
+    save_schedule_c_part, get_schedule_c_responses,
+    get_schedule_c_progress, get_schedule_c_business_count,
 )
 from .questionnaire import (
     QUESTIONNAIRE_SECTIONS, get_required_documents,
     get_section_for_filing_status
+)
+from .schedule_c_interview import (
+    SCHEDULE_C_PARTS, get_part_by_id, get_part_ids,
+    get_inline_doc_hints, compute_net_profit, get_preparer_flags,
+    IRS_INSTRUCTIONS, PUB_REFERENCES,
 )
 
 portal_bp = Blueprint("portal", __name__)
@@ -214,6 +221,10 @@ def year_detail(year: int):
             "uploads": [],
         })
 
+    schedule_c_progress = {}
+    if answers.get("self_employment") == "yes":
+        schedule_c_progress = get_schedule_c_progress(_db_path(), user_id, year)
+
     return render_template(
         "portal/checklist.html",
         year=year,
@@ -225,6 +236,7 @@ def year_detail(year: int):
         answers=answers,
         manual_entries=manual_entries,
         charitable_entries=charitable_entries,
+        schedule_c_progress=schedule_c_progress,
     )
 
 
@@ -458,3 +470,177 @@ def delete_upload_file(year: int, upload_id: int):
         flash("File not found or you do not have permission to delete it.", "error")
 
     return redirect(url_for("portal.year_detail", year=year))
+
+
+# ---------------------------------------------------------------------------
+# Schedule C Interview
+# ---------------------------------------------------------------------------
+
+@portal_bp.route("/year/<int:year>/schedule-c")
+@login_required
+def schedule_c_index(year: int):
+    """Redirect to the last incomplete part, or intro if no progress yet."""
+    if year not in TAX_YEARS:
+        flash("Invalid tax year.", "error")
+        return redirect(url_for("portal.dashboard"))
+
+    user_id = session["user_id"]
+    business_index = int(request.args.get("business", 0))
+    responses = get_schedule_c_responses(_db_path(), user_id, year, business_index)
+    part_ids = get_part_ids()
+
+    # Find first incomplete part
+    for pid in part_ids:
+        if not responses.get(pid, {}).get("completed"):
+            return redirect(url_for(
+                "portal.schedule_c_part",
+                year=year, part_id=pid,
+                business=business_index,
+            ))
+
+    # All parts complete — go to review
+    return redirect(url_for("portal.schedule_c_review", year=year, business=business_index))
+
+
+@portal_bp.route("/year/<int:year>/schedule-c/part/<part_id>", methods=["GET"])
+@login_required
+def schedule_c_part(year: int, part_id: str):
+    if year not in TAX_YEARS:
+        flash("Invalid tax year.", "error")
+        return redirect(url_for("portal.dashboard"))
+
+    part = get_part_by_id(part_id)
+    if not part:
+        flash("Invalid interview section.", "error")
+        return redirect(url_for("portal.schedule_c_index", year=year))
+
+    user_id = session["user_id"]
+    business_index = int(request.args.get("business", 0))
+    responses = get_schedule_c_responses(_db_path(), user_id, year, business_index)
+    part_ids = get_part_ids()
+
+    # Merge all answers for conditional logic
+    all_answers: dict = {}
+    for pid in part_ids:
+        all_answers.update(responses.get(pid, {}).get("answers", {}))
+
+    current_answers = responses.get(part_id, {}).get("answers", {})
+    doc_hints = get_inline_doc_hints(part_id, all_answers)
+    uploads = get_uploads(_db_path(), user_id, year)
+    uploads_by_cat = {}
+    for u in uploads:
+        uploads_by_cat.setdefault(u["category"], []).append(u)
+
+    # Build nav with completion state
+    nav_parts = []
+    for pid in part_ids:
+        p = get_part_by_id(pid)
+        nav_parts.append({
+            "id": pid,
+            "title": p["title"],
+            "completed": responses.get(pid, {}).get("completed", False),
+            "active": pid == part_id,
+        })
+
+    # Progress percentage
+    completed_count = sum(1 for np in nav_parts if np["completed"])
+    progress_pct = int(completed_count / len(part_ids) * 100) if part_ids else 0
+
+    business_count = get_schedule_c_business_count(_db_path(), user_id, year)
+
+    return render_template(
+        "portal/schedule_c_interview.html",
+        year=year,
+        part=part,
+        part_id=part_id,
+        part_ids=part_ids,
+        nav_parts=nav_parts,
+        answers=current_answers,
+        all_answers=all_answers,
+        doc_hints=doc_hints,
+        uploads_by_cat=uploads_by_cat,
+        progress_pct=progress_pct,
+        business_index=business_index,
+        business_count=business_count,
+    )
+
+
+@portal_bp.route("/year/<int:year>/schedule-c/save", methods=["POST"])
+@login_required
+def schedule_c_save(year: int):
+    """AJAX auto-save endpoint. Returns JSON."""
+    if year not in TAX_YEARS:
+        return jsonify({"ok": False, "error": "Invalid year"}), 400
+
+    user_id = session["user_id"]
+    data = request.get_json(silent=True) or {}
+    part_id = data.get("part_id", "")
+    business_index = int(data.get("business_index", 0))
+    answers = data.get("answers", {})
+    completed = bool(data.get("completed", False))
+
+    if not get_part_by_id(part_id):
+        return jsonify({"ok": False, "error": "Invalid part"}), 400
+
+    save_schedule_c_part(_db_path(), user_id, year, business_index, part_id, answers, completed)
+    return jsonify({"ok": True})
+
+
+@portal_bp.route("/year/<int:year>/schedule-c/review")
+@login_required
+def schedule_c_review(year: int):
+    if year not in TAX_YEARS:
+        flash("Invalid tax year.", "error")
+        return redirect(url_for("portal.dashboard"))
+
+    user_id = session["user_id"]
+    business_index = int(request.args.get("business", 0))
+    responses = get_schedule_c_responses(_db_path(), user_id, year, business_index)
+    part_ids = get_part_ids()
+
+    all_answers: dict = {}
+    for pid in part_ids:
+        all_answers.update(responses.get(pid, {}).get("answers", {}))
+
+    summary = compute_net_profit(all_answers)
+    nav_parts = []
+    for pid in part_ids:
+        p = get_part_by_id(pid)
+        nav_parts.append({
+            "id": pid,
+            "title": p["title"],
+            "completed": responses.get(pid, {}).get("completed", False),
+            "active": False,
+        })
+    completed_count = sum(1 for np in nav_parts if np["completed"])
+    progress_pct = int(completed_count / len(part_ids) * 100) if part_ids else 0
+    business_count = get_schedule_c_business_count(_db_path(), user_id, year)
+
+    return render_template(
+        "portal/schedule_c_review.html",
+        year=year,
+        all_answers=all_answers,
+        summary=summary,
+        nav_parts=nav_parts,
+        progress_pct=progress_pct,
+        business_index=business_index,
+        business_count=business_count,
+        parts=SCHEDULE_C_PARTS,
+    )
+
+
+@portal_bp.route("/year/<int:year>/schedule-c/add-business", methods=["POST"])
+@login_required
+def schedule_c_add_business(year: int):
+    if year not in TAX_YEARS:
+        flash("Invalid tax year.", "error")
+        return redirect(url_for("portal.dashboard"))
+
+    user_id = session["user_id"]
+    new_index = get_schedule_c_business_count(_db_path(), user_id, year)
+    return redirect(url_for(
+        "portal.schedule_c_part",
+        year=year,
+        part_id="intro",
+        business=new_index,
+    ))

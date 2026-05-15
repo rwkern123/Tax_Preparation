@@ -470,7 +470,11 @@ def _build_schd_fields(agg: dict, user: dict) -> dict[int, dict[str, str]]:
 
 def aggregate_1040_data(parsed_docs: list[dict], user: dict, year: int,
                         manual_entries: list[dict] | None = None,
-                        schedule_c_summary: dict | None = None) -> dict:
+                        schedule_c_summary: dict | None = None,
+                        schedule_c_summaries: list[dict] | None = None) -> dict:
+    # Normalise: prefer the list form; fall back to legacy single-dict param.
+    if schedule_c_summaries is None:
+        schedule_c_summaries = [schedule_c_summary] if schedule_c_summary else []
     w2_wages        = 0.0
     w2_withheld     = 0.0
     interest        = 0.0
@@ -605,11 +609,11 @@ def aggregate_1040_data(parsed_docs: list[dict], user: dict, year: int,
         if amt > 0 and "Manual entry" not in charitable_sources:
             charitable_sources.append("Manual entry")
 
-    # Schedule C net profit from interview
+    # Schedule C net profit — sum across all businesses
     se_net = 0.0
-    if schedule_c_summary and schedule_c_summary.get("net_profit") is not None:
-        se_net = float(schedule_c_summary["net_profit"])
-        if se_net:
+    for _sc in schedule_c_summaries:
+        if _sc and _sc.get("net_profit") is not None:
+            se_net += float(_sc["net_profit"])
             has_any = True
 
     if not has_any:
@@ -664,20 +668,30 @@ def aggregate_1040_data(parsed_docs: list[dict], user: dict, year: int,
         {"key": "scha_11",  "label": "Sched A 11 — Charitable (cash)",          "value": charitable_cash    if charitable_cash    else None, "sources": charitable_sources, "sched": "A"},
         {"key": "scha_12",  "label": "Sched A 12 — Charitable (noncash)",       "value": charitable_noncash if charitable_noncash else None, "sources": charitable_sources, "sched": "A"},
         {"key": "scha_17",  "label": "Sched A 17 — Total itemized deductions",  "value": itemized_total  if has_sched_a else None, "sources": [], "sched": "A"},
-        # ── Schedule C detail lines (collapsible) ──
-        {"key": "schc_gross",  "label": "Sched C — Gross receipts",         "value": float(schedule_c_summary["gross_receipts"])  if schedule_c_summary and schedule_c_summary.get("gross_receipts") else None,  "sources": ["Schedule C"], "sched": "C"},
-        {"key": "schc_cogs",   "label": "Sched C — Cost of goods sold",     "value": schedule_c_summary.get("cogs")               if schedule_c_summary else None,                                                  "sources": ["Schedule C"], "sched": "C"},
-        {"key": "schc_gp",     "label": "Sched C — Gross profit",           "value": schedule_c_summary.get("gross_profit")       if schedule_c_summary else None,                                                  "sources": ["Schedule C"], "sched": "C"},
-        {"key": "schc_exp",    "label": "Sched C — Total expenses",         "value": schedule_c_summary.get("total_expenses")     if schedule_c_summary else None,                                                  "sources": ["Schedule C"], "sched": "C"},
-        {"key": "schc_net",    "label": "Sched C — Net profit/(loss)",      "value": se_net                                        if schedule_c_summary else None,                                                  "sources": ["Schedule C"], "sched": "C"},
     ]
+
+    # ── Schedule C detail lines (collapsible) — one block per business ──
+    multi = len(schedule_c_summaries) > 1
+    for _sc in schedule_c_summaries:
+        bi   = _sc.get("business_index", 0)
+        biz  = (_sc.get("business_name") or f"Business {bi + 1}").strip()
+        pfx  = f"Sched C [{biz}]" if multi else "Sched C"
+        key  = f"b{bi}_"
+        _net = float(_sc["net_profit"]) if _sc.get("net_profit") is not None else None
+        lines += [
+            {"key": f"{key}schc_gross", "label": f"{pfx} — Gross receipts",      "value": float(_sc["gross_receipts"]) if _sc.get("gross_receipts") else None, "sources": ["Schedule C"], "sched": "C"},
+            {"key": f"{key}schc_cogs",  "label": f"{pfx} — Cost of goods sold",  "value": _sc.get("cogs"),                                                      "sources": ["Schedule C"], "sched": "C"},
+            {"key": f"{key}schc_gp",    "label": f"{pfx} — Gross profit",        "value": _sc.get("gross_profit"),                                              "sources": ["Schedule C"], "sched": "C"},
+            {"key": f"{key}schc_exp",   "label": f"{pfx} — Total expenses",      "value": _sc.get("total_expenses"),                                            "sources": ["Schedule C"], "sched": "C"},
+            {"key": f"{key}schc_net",   "label": f"{pfx} — Net profit/(loss)",   "value": _net,                                                                 "sources": ["Schedule C"], "sched": "C"},
+        ]
 
     return {
         "lines": lines,
         "has_sched_a": has_sched_a,
-        "has_sched_c": bool(schedule_c_summary and schedule_c_summary.get("net_profit") is not None),
-        "has_sched_1": bool(schedule_c_summary and schedule_c_summary.get("net_profit") is not None),
-        "sched_c":     schedule_c_summary or {},
+        "has_sched_c": bool(schedule_c_summaries),
+        "has_sched_1": bool(schedule_c_summaries),
+        "sched_c":     schedule_c_summaries[0] if schedule_c_summaries else {},
         "has_sched_b": has_sched_b,
         "has_sched_d": has_sched_d,
         "occupation_tp": occ_tp,

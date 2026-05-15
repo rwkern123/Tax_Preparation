@@ -296,9 +296,9 @@ def client_detail(user_id: int):
     from .form_1040_filler import aggregate_1040_data
     from src.tax_calculator import calculate_tax_from_docs
     manual_entries = get_manual_entries(_preparer_db(), user_id, year)
-    sc_summary     = _load_schedule_c_summary(_portal_db(), user_id, year)
+    sc_summaries   = _load_schedule_c_summaries(_portal_db(), user_id, year)
     form_1040_data = aggregate_1040_data(parsed_docs, user, year, manual_entries=manual_entries,
-                                         schedule_c_summary=sc_summary)
+                                         schedule_c_summaries=sc_summaries)
     field_overrides = get_field_overrides(_preparer_db(), user_id, year)
 
     num_children = int(user.get("num_dependents") or 0)
@@ -385,8 +385,8 @@ def client_detail(user_id: int):
             schedc_lines_dict: dict[str, dict] = {}
             y_est = None  # No calculator estimate for prior year return columns
         else:
-            y_sc = sc_summary if y == year else None
-            y_f1040 = aggregate_1040_data(y_parsed, user, y, manual_entries=y_manual, schedule_c_summary=y_sc)
+            y_sc = sc_summaries if y == year else []
+            y_f1040 = aggregate_1040_data(y_parsed, user, y, manual_entries=y_manual, schedule_c_summaries=y_sc)
             try:
                 y_est = (calculate_tax_from_docs(
                     y_parsed,
@@ -853,6 +853,19 @@ def schedule_c_save_preparer(user_id: int, year: int):
     return jsonify({"ok": True})
 
 
+@preparer_bp.route("/client/<int:user_id>/schedule-c/<int:year>/add-business", methods=["POST"])
+@login_required
+def schedule_c_add_business(user_id: int, year: int):
+    from portal.database import get_user_by_id, get_schedule_c_business_count
+    user = get_user_by_id(_portal_db(), user_id)
+    if not user:
+        flash("Client not found.", "error")
+        return redirect(url_for("preparer.client_list"))
+    new_index = get_schedule_c_business_count(_portal_db(), user_id, year)
+    return redirect(url_for("preparer.schedule_c_edit", user_id=user_id, year=year,
+                            part="intro", business=new_index))
+
+
 # ---------------------------------------------------------------------------
 # File viewer
 # ---------------------------------------------------------------------------
@@ -1023,22 +1036,33 @@ def delete_manual_entry_route(user_id: int, year: int, entry_id: int):
     return redirect(url_for("preparer.client_detail", user_id=user_id, year=year))
 
 
-def _load_schedule_c_summary(portal_db_path: str, user_id: int, year: int) -> dict | None:
+def _load_schedule_c_summaries(portal_db_path: str, user_id: int, year: int) -> list[dict]:
+    """Return one summary dict per business (business_index 0, 1, …). Empty list if none."""
     try:
-        from portal.database import get_schedule_c_responses
+        from portal.database import get_schedule_c_responses, get_schedule_c_business_count
         from portal.schedule_c_interview import compute_net_profit
-        responses = get_schedule_c_responses(portal_db_path, user_id, year, business_index=0)
-        if not responses:
-            return None
-        all_answers: dict = {}
-        for part_data in responses.values():
-            all_answers.update(part_data.get("answers", {}))
-        summary = compute_net_profit(all_answers)
-        if summary.get("net_profit") is None:
-            return None
-        return {**summary, **all_answers}
+        count = get_schedule_c_business_count(portal_db_path, user_id, year)
+        summaries = []
+        for bi in range(count):
+            responses = get_schedule_c_responses(portal_db_path, user_id, year, business_index=bi)
+            if not responses:
+                continue
+            all_answers: dict = {}
+            for part_data in responses.values():
+                all_answers.update(part_data.get("answers", {}))
+            summary = compute_net_profit(all_answers)
+            if summary.get("net_profit") is None:
+                continue
+            summaries.append({**summary, **all_answers, "business_index": bi})
+        return summaries
     except Exception:
-        return None
+        return []
+
+
+def _load_schedule_c_summary(portal_db_path: str, user_id: int, year: int) -> dict | None:
+    """Return first business summary for callers that expect a single dict (e.g. PDF filler)."""
+    summaries = _load_schedule_c_summaries(portal_db_path, user_id, year)
+    return summaries[0] if summaries else None
 
 
 def _generate_1040_pdf(user_id: int, year: int) -> bytes:

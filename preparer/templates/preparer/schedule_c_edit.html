@@ -94,16 +94,23 @@
       </h5>
     </div>
 
-    {% if business_count > 1 %}
-    <div class="business-tabs">
+    <div class="business-tabs" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
       {% for bi in range(business_count) %}
       <a href="{{ url_for('preparer.schedule_c_edit', user_id=user.id, year=year, part=part_id, business=bi) }}"
          class="business-tab {% if bi == business_index %}active{% endif %}">
         Business {{ bi + 1 }}
       </a>
       {% endfor %}
+      <form method="post"
+            action="{{ url_for('preparer.schedule_c_add_business', user_id=user.id, year=year) }}"
+            style="margin:0">
+        <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2"
+                style="font-size:.78rem;height:28px"
+                onclick="return confirm('Add a new business for this client?')">
+          + Add Business
+        </button>
+      </form>
     </div>
-    {% endif %}
 
     <!-- Three-column layout: sidebar | form | guidance -->
     <div class="sch-c-layout">

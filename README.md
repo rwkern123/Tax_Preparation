@@ -1,158 +1,89 @@
-# Tax Return Workpaper Generator (Local-Only MVP)
+# Tax Preparation Portals
 
-Offline Python CLI that scans local client folders, classifies tax documents, extracts key fields, and generates workpapers.
+A local-first tax preparation system with two user-facing Flask applications:
 
-## Features
-- Local-only processing (no network calls)
-- Per-client outputs in `_workpapers/`:
-  - `Return_Prep_Checklist.md`
-  - `Document_Index.csv`
-  - `Data_Extract.json`
-  - `1099b_trades_tax.csv` / `1099b_trades_tax.jsonl` (when 1099-B trade rows are detected)
-  - `1099b_trades_analytics.csv`, `1099b_reconciliation.json`, and `1099b_exceptions.csv` (when 1099-B trade rows are detected)
-  - `Questions_For_Client.md`
-  - `Organization_Log.csv` (when `--organize` is used)
-- Document support (MVP): PDF, JPG, PNG
-- Classification: W-2, brokerage 1099 composite, 1098 mortgage interest, unknown
-- Text extraction via embedded PDF text first, optional OCR fallback
-- Redaction option for markdown outputs
-- Optional auto-organization from a single client intake folder into standardized owner/form subfolders
+- **Client portal** — registration, two-factor authentication, questionnaires,
+  document intake, and Schedule C interviews.
+- **Preparer portal** — client review, document parsing, field overrides, tax
+  estimates, Schedule C review, and federal return PDF generation.
 
-## Project layout
-```
-src/
-  main.py
-  scanner.py
-  classify.py
-  checklist.py
-  questions.py
-  models.py
-  config.py
-  organize.py
-  compare.py
-  dashboard.py
-  webapp.py
-  extract/
-    generic_pdf.py
-    w2.py
-    brokerage_1099.py
-    form_1099b_trades.py
-    form_1098.py
-tests/
-outputs/
+The reusable parsing and calculation engine lives in `src/`. It is application
+code shared by the portals, not a separate command-line product.
+
+## Supported document extraction
+
+- W-2
+- Brokerage 1099 composites and 1099-B trades (PDF, supported CSV, and XML)
+- Forms 1098 and 1098-T
+- Forms 1099-NEC, 1099-R, 1099-G, 1099-MISC, 1099-Q, and 1099-SA
+- SSA-1099
+- Prior-year Form 1040
+- Schedule C
+
+PDF text is parsed locally. OCR is optional. Azure Document Intelligence is an
+explicit opt-in fallback for supported low-confidence documents.
+
+## Setup
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
-## Recommended client folder structure (accuracy-focused)
-For best classification and extraction quality, keep one folder per tax return/client unit under the year root.
+Optional OCR requires Tesseract and Poppler installed on the computer.
 
-### Option A: preferred standardized structure
-```text
-C:\TaxClients\2024\
-  Kern_Ryan_Brittany_MFJ\
-    01_Taxpayer\
-      W2\
-      Brokerage_1099\
-      Form_1098\
-      Other\
-    02_Spouse\
-      W2\
-      Brokerage_1099\
-      Form_1098\
-      Other\
-    03_Joint\
-      W2\
-      Brokerage_1099\
-      Form_1098\
-      Other\
-    04_Unsorted\
-    99_Reference\
-      name_aliases.txt
-    _workpapers\
+Before using the preparer portal, set persistent credentials:
+
+```powershell
+$env:PREPARER_PASSWORD = "choose-a-strong-password"
+$env:PREPARER_SECRET_KEY = "a-long-random-secret"
+$env:PORTAL_SECRET_KEY = "a-different-long-random-secret"
 ```
 
-### Option B: easiest client intake (single drop folder)
-If clients upload everything into one place, that is now supported:
-```text
-C:\TaxClients\2024\
-  Kern_Ryan_Brittany_MFJ\
-    Inbox\
-      all client documents mixed together...
-```
-Then run with `--organize` and the program will attempt to move documents into the standardized structure.
-
-## Naming conventions to improve accuracy
-- Include tax year + form type + owner + institution in filenames.
-- Use explicit owner tags: `Ryan`, `Brittany`, or `Joint`.
-- For Form 1098 ownership clarity:
-  - `2024_1098_Mortgage_Ryan_WellsFargo.pdf` (individual payer)
-  - `2024_1098_Mortgage_Joint_WellsFargo.pdf` (joint)
-- If spouse has former/alternate names (e.g., Brittany Webb), pass alias flags or store in `99_Reference/name_aliases.txt`.
-
-## Windows setup
-1. Create and activate virtual environment:
-   - `python -m venv .venv`
-   - `.venv\Scripts\activate`
-2. Install dependencies:
-   - `pip install pdfplumber pypdf pytesseract pillow pdf2image flask`
-3. Optional OCR tools:
-   - Install **Tesseract OCR** locally and add to PATH.
-   - (For OCR on PDFs) install Poppler binaries and add to PATH for `pdf2image`.
+Do not expose either development server directly to a public network.
 
 ## Run
-```bash
-python -m src.main --root "C:\TaxClients\2024" --year 2024
-python -m src.main --root "C:\TaxClients\2024" --year 2024 --ocr --redact --verbose
-python -m src.main --root "C:\TaxClients\2024" --year 2024 --client "Kern_Ryan_Brittany_MFJ"
+
+Client portal:
+
+```powershell
+python run_portal.py
 ```
 
-### Auto-organize mixed single-folder intake
-```bash
-python -m src.main --root "C:\TaxClients\2024" --year 2024 \
-  --client "Kern_Ryan_Brittany_MFJ" \
-  --organize --taxpayer-name "Ryan Kern" --spouse-name "Brittany Kern" --spouse-alias "Brittany Webb"
+Open `http://127.0.0.1:5050`.
 
-# preview only (no file moves)
-python -m src.main --root "C:\TaxClients\2024" --year 2024 \
-  --client "Kern_Ryan_Brittany_MFJ" --organize --organize-dry-run --taxpayer-name "Ryan Kern" --spouse-name "Brittany Kern"
+Preparer portal:
+
+```powershell
+python run_preparer.py
 ```
 
+Open `http://127.0.0.1:8800`. On Windows, `launch_portal.bat` and
+`launch_preparer.bat` provide shortcuts.
 
+## Project layout
 
-### Prior-year comparison report
-You can generate a year-over-year comparison using prior-year extracted outputs:
-```bash
-python -m src.main --root "C:\TaxClients\2024" --year 2024 \
-  --compare-prior-year --prior-year-root "C:\TaxClients\2023"
+```text
+portal/       Client portal
+preparer/     Preparer portal
+src/          Shared classifiers, extractors, models, and tax calculations
+pdf_forms/    Blank IRS PDF assets used by return generation
+portal_data/  Local SQLite databases and uploads (ignored; contains PII)
+tests/        Shared-engine tests
 ```
-This writes `_workpapers/Prior_Year_Comparison.md` per client (when both years have `Data_Extract.json`), with:
-- current vs prior values for key metrics (W-2 wages/withholding, 1099 income totals, 1098 mortgage totals)
-- delta and percent change
-- review flags for large (>20%) year-over-year changes
 
-### Local web UI (client list + follow-up task list)
-You can run a local-only dashboard after generating workpapers:
-```bash
-python -m src.webapp --root "C:\TaxClients\2024" --port 8787
+## Data and privacy
+
+Client documents and databases stay under `portal_data/` and must never be
+committed. The repository's example tax documents should contain only synthetic
+or appropriately redacted data. Enabling Azure sends selected documents to that
+external service for extraction.
+
+## Tests
+
+```powershell
+python -m pytest -q
 ```
-Then open `http://127.0.0.1:8787` in your browser.
 
-What you get:
-- Client list view with document counts, unknown/error counts, and extracted-form summary.
-- Client detail page with follow-up/review tasks from `Questions_For_Client.md`.
-- Quick visibility into which clients need attention first.
-
-## 1099-B detailed workflow (many trades)
-For a trade-level 1099-B extraction and storage workflow (Form 8949/Schedule D mapping + analytics-ready outputs), see:
-
-- `docs/1099b_workflow.md`
-
-## Notes on privacy
-- The tool is designed for local/offline execution.
-- It does not send document text externally.
-- `Document_Index.csv` stores metadata + extracted fields only.
-- Use `--redact` to mask common PII patterns in markdown outputs.
-
-## Testing
-```bash
-python -m unittest discover -s tests -p "test_*.py"
-```
+See `ideas/roadmap.md` for known limitations and planned work.

@@ -8,6 +8,26 @@ from dataclasses import asdict
 
 _BROKERAGE_CATEGORIES = {"1099_INT", "1099_DIV", "1099_B", "Brokerage_1099"}
 
+_CATEGORY_DOC_TYPES = {
+    "W2": "w2",
+    "W2_Taxpayer": "w2",
+    "W2_Spouse": "w2",
+    "1098": "form_1098",
+    "1098_T": "form_1098_t",
+    "1099_NEC": "form_1099_nec",
+    "1099_R": "form_1099_r",
+    "1099_G": "form_1099_g",
+    "1099_G_Unemployment": "form_1099_g",
+    "1099_G_Refund": "form_1099_g",
+    "1099_MISC": "form_1099_misc",
+    "1099_Q": "form_1099_q",
+    "1099_SA": "form_1099_sa",
+    "HSA_1099SA": "form_1099_sa",
+    "SSA_1099": "ssa_1099",
+    "Schedule_C": "schedule_c",
+    "Prior_Year_Return": "prior_year_return",
+}
+
 
 def parse_uploaded_file(file_path: str, use_ocr: bool = False, category_hint: str = "") -> dict:
     """
@@ -25,14 +45,19 @@ def parse_uploaded_file(file_path: str, use_ocr: bool = False, category_hint: st
     path = Path(file_path)
     try:
         from src.extract.generic_pdf import get_document_text
-        from src.classify import classify_document
+        from src.classify import classify_document, classify_document_structured
         from src.extract.w2 import parse_w2_text
         from src.extract.brokerage_1099 import parse_brokerage_1099_text
         from src.extract.form_1098 import parse_1098_text
         from src.extract.form_1099b_trades import parse_1099b_trades_text
 
-        text, _notes = get_document_text(path, enable_ocr=use_ocr)
-        doc_type, confidence, _year = classify_document(path, text)
+        structured = classify_document_structured(path)
+        if structured:
+            doc_type, confidence = structured
+            text = ""
+        else:
+            text, _notes = get_document_text(path, enable_ocr=use_ocr)
+            doc_type, confidence, _year = classify_document(path, text)
 
         # If the upload category implies a brokerage form but classification didn't
         # pick it up (e.g. low-confidence composite PDF), force brokerage parsing.
@@ -40,9 +65,11 @@ def parse_uploaded_file(file_path: str, use_ocr: bool = False, category_hint: st
             doc_type = "brokerage_1099"
             confidence = max(confidence, 0.5)
 
-        # Prior year return category always implies prior_year_return doc type.
-        if category_hint == "Prior_Year_Return" and doc_type != "prior_year_return":
-            doc_type = "prior_year_return"
+        # An explicit upload category is stronger evidence than weak text
+        # classification, and lets every supported form reach its parser.
+        hinted_type = _CATEGORY_DOC_TYPES.get(category_hint)
+        if hinted_type and doc_type != hinted_type:
+            doc_type = hinted_type
             confidence = max(confidence, 0.5)
 
         extracted: dict = {}
@@ -50,8 +77,21 @@ def parse_uploaded_file(file_path: str, use_ocr: bool = False, category_hint: st
             data = parse_w2_text(text)
             extracted = {"w2": [asdict(data)]}
         elif doc_type == "brokerage_1099":
-            summary = parse_brokerage_1099_text(text)
-            trades = parse_1099b_trades_text(text)
+            if path.suffix.lower() == ".csv":
+                from src.extract.brokerage_1099_csv import parse_brokerage_1099_csv
+                summary, trades = parse_brokerage_1099_csv(
+                    path.read_text(encoding="utf-8", errors="replace"),
+                    source_file=path.name,
+                )
+            elif path.suffix.lower() == ".xml":
+                from src.extract.brokerage_1099_xml import parse_brokerage_1099_xml
+                summary, trades = parse_brokerage_1099_xml(
+                    path.read_text(encoding="utf-8", errors="replace"),
+                    source_file=path.name,
+                )
+            else:
+                summary = parse_brokerage_1099_text(text)
+                trades = parse_1099b_trades_text(text)
             extracted = {
                 "brokerage_1099": [asdict(summary)],
                 "brokerage_1099_trades": [asdict(t) for t in trades],
@@ -63,6 +103,23 @@ def parse_uploaded_file(file_path: str, use_ocr: bool = False, category_hint: st
             from src.extract.prior_year_return import parse_prior_year_return_text
             data = parse_prior_year_return_text(text)
             extracted = {"prior_year_return": [asdict(data)]}
+        else:
+            parser_specs = {
+                "form_1099_nec": ("src.extract.form_1099_nec", "parse_1099_nec_text"),
+                "form_1099_r": ("src.extract.form_1099_r", "parse_1099_r_text"),
+                "form_1099_g": ("src.extract.form_1099_g", "parse_1099_g_text"),
+                "form_1099_misc": ("src.extract.form_1099_misc", "parse_1099_misc_text"),
+                "form_1098_t": ("src.extract.form_1098_t", "parse_1098_t_text"),
+                "form_1099_q": ("src.extract.form_1099_q", "parse_1099_q_text"),
+                "form_1099_sa": ("src.extract.form_1099_sa", "parse_1099_sa_text"),
+                "ssa_1099": ("src.extract.ssa_1099", "parse_ssa_1099_text"),
+                "schedule_c": ("src.extract.schedule_c", "parse_schedule_c_text"),
+            }
+            spec = parser_specs.get(doc_type)
+            if spec:
+                from importlib import import_module
+                parser = getattr(import_module(spec[0]), spec[1])
+                extracted = {doc_type: [asdict(parser(text))]}
 
         drake = _to_drake_fields(doc_type, extracted)
         flags = _generate_flags(doc_type, confidence, extracted)
@@ -106,19 +163,27 @@ def azure_parse_uploaded_file(
     Re-parse a single file using Azure Document Intelligence and return a
     normalized result dict in the same shape as parse_uploaded_file().
 
-    If the azure-ai-formrecognizer SDK is not installed, it is installed
-    automatically before proceeding.
+    The Azure SDK must already be installed as part of application setup.
     """
-    # Auto-install the SDK if missing
+    # Azure is optional and must be installed during application setup. A web
+    # request must never install packages into the running environment.
     try:
         import azure.ai.formrecognizer  # noqa: F401
     except ImportError:
-        import subprocess, sys
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "azure-ai-formrecognizer"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        return {
+            "doc_type": doc_type_hint,
+            "confidence": 0.0,
+            "parsing_status": "failed",
+            "parse_error": "Azure support is not installed. Install project requirements and restart the portal.",
+            "extracted": {},
+            "drake": {},
+            "flags": [{
+                "type": "parse_error",
+                "severity": "error",
+                "message": "Azure parsing is unavailable because its SDK is not installed.",
+                "field": None,
+            }],
+        }
 
     path = Path(file_path)
     try:

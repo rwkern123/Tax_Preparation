@@ -20,7 +20,7 @@ def create_app(config: dict = None) -> Flask:
     app.config["SMTP_CONFIG"] = {}  # Populate for email 2FA
     app.config["ALLOWED_EXTENSIONS"] = {
         ".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff",
-        ".doc", ".docx", ".xls", ".xlsx", ".csv"
+        ".doc", ".docx", ".xls", ".xlsx", ".csv", ".xml"
     }
 
     if config:

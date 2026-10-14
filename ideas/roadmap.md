@@ -86,12 +86,12 @@ Suggested approach: abstract a broker adapter interface; implement per-broker ad
 
 ---
 
-## 6. Web UI / Dashboard
+## 6. Preparer Portal
 
 - ~~**No manual override / correction UI**~~ — **Completed April 2026**: preparer portal (`preparer/`) supports field overrides on the client detail page.
-- **No Excel/CSV export** from the dashboard for downstream tax software import.
-- ~~**Dashboard rebuilds from scratch on every page load**~~ — **Partially addressed April 2026**: document-load caching added (`src/dashboard.py`). Full result caching (JSON/CSV) still not implemented.
-- ~~**No authentication**~~ — **Addressed**: preparer portal has login with password auth. Client portal has login + 2FA. Original `src/webapp.py` (read-only CLI companion) remains unauthenticated, which is acceptable for local-only use.
+- **No Excel/CSV export** from the preparer portal for downstream tax software import.
+- Parsed-document caching is incomplete.
+- ~~**No authentication**~~ — **Addressed**: preparer portal has password authentication and the client portal has login + 2FA.
 - ~~**No prior-year comparison visible in UI**~~ — **Completed April 2026**: prior-year return data is now surfaced on the client detail page.
 
 ---
@@ -138,8 +138,8 @@ New dual-portal architecture added April–May 2026. Remaining gaps:
 
 ## 9. Performance / Scalability
 
-- **Single-threaded serial processing** — slow for large batches (20+ clients, many PDFs each).
-- **No caching of extracted text or results** — every run re-processes all PDFs from scratch.
+- Upload parsing is synchronous, so large PDFs can hold a web request open.
+- Extracted text and parsing results are not consistently cached across reparses.
 
 ---
 
@@ -148,4 +148,33 @@ New dual-portal architecture added April–May 2026. Remaining gaps:
 - **Azure setup guide incomplete** — Azure Document Intelligence endpoint/API key acquisition and configuration steps not fully documented. (Azure extractors exist for W-2, brokerage 1099-B, 1098, 1099-G, 1099-MISC, 1098-T, 1099-Q, 1099-SA, Schedule C, and prior-year Form 1040 — but onboarding a new user requires undocumented setup.)
 - **OCR setup on Windows** — Tesseract + Poppler PATH configuration not documented.
 - **No troubleshooting guide** for common parse failures (low-confidence extractions, blank fields).
-- **Preparer and client portal setup not documented** — environment variables (`PREPARER_PASSWORD`, `PREPARER_SECRET_KEY`), database initialization, and launch steps (`launch_portal.bat`) need a setup guide.
+- Portal deployment beyond localhost, SMTP/2FA setup, and database recovery need dedicated guides.
+
+---
+
+## 11. Deferred: OpenAI-Assisted Parsing
+
+Add an optional AI parsing fallback that can use an eligible ChatGPT subscription
+through **Sign in with ChatGPT** and Codex app-server. This is intentionally
+deferred; the local deterministic parsers remain the default.
+
+Proposed design:
+
+- Invoke AI only for unsupported documents or fields below a configurable
+  confidence threshold.
+- Authenticate through the supported browser-based OAuth flow; never copy or
+  reuse credentials from the Codex or ChatGPT applications.
+- Run Codex app-server locally and request schema-constrained results matching
+  the existing `src.models` dataclasses.
+- Validate AI output with deterministic type, range, arithmetic, and cross-form
+  checks before saving it.
+- Show local and AI values side by side when they disagree, and require preparer
+  approval for material differences.
+- Record provider, model, timestamp, source document, validation warnings, and
+  preparer approval as an audit trail.
+- Make external processing explicitly opt-in and clearly disclose that selected
+  tax documents may be transmitted to OpenAI.
+- Review OpenAI data controls, retention terms, and eligibility immediately
+  before implementation; subscription-backed app access may change over time.
+- Keep ordinary OpenAI API-key support as a separately billed fallback if
+  subscription-backed access is unavailable or exhausted.

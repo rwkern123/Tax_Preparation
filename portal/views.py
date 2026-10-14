@@ -319,7 +319,7 @@ def upload_file(year: int, category: str):
         return redirect(url_for("portal.year_detail", year=year))
 
     if not _allowed_file(file.filename):
-        flash(f"File type not allowed. Allowed types: PDF, JPG, PNG, TIFF, DOC, DOCX, XLS, XLSX, CSV.", "error")
+        flash(f"File type not allowed. Allowed types: PDF, JPG, PNG, TIFF, DOC, DOCX, XLS, XLSX, CSV, XML.", "error")
         return redirect(url_for("portal.year_detail", year=year))
 
     try:
@@ -357,7 +357,9 @@ def _trigger_parse_on_upload(
         / stored_name
     )
 
-    if file_path.suffix.lower() != ".pdf":
+    if file_path.suffix.lower() not in {
+        ".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".csv", ".xml"
+    }:
         return
 
     preparer_db = current_app.config.get("PREPARER_DB_PATH")
@@ -368,7 +370,9 @@ def _trigger_parse_on_upload(
         from preparer.parser_bridge import parse_uploaded_file
         from preparer.database import upsert_parsed_document
 
-        result = parse_uploaded_file(str(file_path), use_ocr=False)
+        result = parse_uploaded_file(
+            str(file_path), use_ocr=False, category_hint=category
+        )
         upsert_parsed_document(
             db_path=preparer_db,
             upload_id=upload_id,

@@ -123,7 +123,7 @@ def ocr_image_or_pdf(path: Path) -> tuple[str, list[str]]:
         return pytesseract.image_to_string(img, config=_OCR_CONFIG)
 
     suffix = path.suffix.lower()
-    if suffix in {".jpg", ".jpeg", ".png"}:
+    if suffix in {".jpg", ".jpeg", ".png", ".tif", ".tiff"}:
         try:
             return _ocr_image(Image.open(path)), ["ocr_applied:image"]
         except Exception as exc:

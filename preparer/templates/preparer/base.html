@@ -1,110 +1,46 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Tax Preparer Dashboard{% endblock %}</title>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TaxDesk{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="{{ url_for('preparer.static', filename='preparer/style.css') }}">
 </head>
-<body class="bg-light">
-
-<!-- Navbar -->
-<nav class="navbar navbar-dark bg-dark px-3 py-2">
-  <div class="d-flex align-items-center gap-2">
-    <button id="sidebarToggleBtn" class="btn btn-sm btn-outline-secondary border-0 text-white me-1"
-            title="Toggle client list" style="font-size:1.1rem; line-height:1;">&#9776;</button>
-    <span class="navbar-brand fw-bold mb-0">&#128196; Tax Preparer Dashboard</span>
+<body><div class="app-shell">
+  <aside id="preparerSidebar" class="app-sidebar">
+    <a class="app-brand" href="{{ url_for('preparer.client_list', year=sidebar_year) }}"><span class="brand-mark">T</span><span>TaxDesk</span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="{{ url_for('preparer.client_list', year=sidebar_year) }}" class="{% if request.endpoint == 'preparer.client_list' %}active{% endif %}"><span class="nav-icon">⌂</span><span>Overview</span></a>
+      <a href="{{ url_for('preparer.client_list', year=sidebar_year) }}#clients"><span class="nav-icon">♙</span><span>Clients</span></a>
+      <a href="{{ url_for('preparer.client_list', year=sidebar_year) }}?view=board#workflow"><span class="nav-icon">✓</span><span>Workflow</span></a>
+      <a href="{{ url_for('preparer.settings') }}" class="{% if request.endpoint == 'preparer.settings' %}active{% endif %}"><span class="nav-icon">⚙</span><span>Settings</span></a>
+    </nav>
+    {% if sidebar_clients %}<div class="sidebar-section">
+      <div class="sidebar-label"><span>Recent clients</span><a href="{{ url_for('preparer.add_client') }}" title="Add client">+</a></div>
+      <div class="sidebar-clients">{% for c in sidebar_clients[:7] %}
+        <a href="{{ url_for('preparer.client_detail', user_id=c.user_id, year=sidebar_year) }}" class="sidebar-client-link {% if request.view_args and request.view_args.get('user_id') == c.user_id %}active{% endif %}">
+          <span class="client-initials">{{ c.display_name.split()[0][0] }}{{ c.display_name.split()[-1][0] }}</span>
+          <span class="client-name">{{ c.display_name }}<small>{{ c.status | replace('_',' ') | title }}</small></span>
+          {% if c.error_flag_count %}<i class="status-dot attention"></i>{% elif c.status == 'complete' %}<i class="status-dot complete"></i>{% endif %}
+        </a>{% endfor %}</div>
+    </div>{% endif %}
+    <div class="sidebar-footer"><span>Active tax year</span><strong>{{ sidebar_year }}</strong><a href="{{ url_for('prep_auth.logout') }}">Sign out</a></div>
+  </aside>
+  <div class="app-frame">
+    <header class="app-header">
+      <button id="sidebarToggleBtn" class="menu-button" type="button" aria-label="Toggle navigation">☰</button>
+      <div class="global-search"><span>⌕</span><input id="globalClientSearch" type="search" placeholder="Search clients" autocomplete="off"><div id="globalSearchResults" class="search-results"></div></div>
+      {% if current_year is defined %}<form method="get" id="year-form" class="year-picker"><label for="year-select">Tax year</label><select id="year-select" name="year" onchange="this.form.submit()">{% for y in tax_years %}<option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></form>{% endif %}
+      <a class="header-action" href="{{ url_for('preparer.add_client') }}">+ Add client</a><span class="user-avatar">RW</span>
+    </header>
+    <main class="app-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for category, message in messages %}<div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">{{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endif %}{% endwith %}
+      {% block content %}{% endblock %}
+    </main>
   </div>
-  <div class="d-flex align-items-center gap-3">
-    {% if current_year is defined %}
-    <form class="d-flex gap-1" method="get" id="year-form">
-      <label class="text-white-50 small align-self-center me-1">Tax Year</label>
-      <select name="year" class="form-select form-select-sm" style="width:100px"
-              onchange="document.getElementById('year-form').submit()">
-        {% for y in tax_years %}
-        <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
-        {% endfor %}
-      </select>
-    </form>
-    {% endif %}
-    <a href="{{ url_for('preparer.settings') }}" class="btn btn-outline-light btn-sm">&#9881; Settings</a>
-    <a href="{{ url_for('prep_auth.logout') }}" class="btn btn-outline-light btn-sm">Sign out</a>
-  </div>
-</nav>
-
-<!-- Body layout: sidebar + main -->
-<div class="d-flex" style="min-height: calc(100vh - 52px);">
-
-  <!-- Collapsible sidebar -->
-  <div id="preparerSidebar" class="bg-white border-end flex-shrink-0"
-       style="width:220px; overflow:hidden; transition:width 0.2s ease;">
-    <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom bg-light">
-      <span class="fw-semibold text-muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:.05em;">Clients</span>
-      <a href="{{ url_for('preparer.add_client') }}" class="btn btn-xs btn-outline-dark"
-         style="font-size:0.7rem; padding:1px 6px;" title="Add client">+</a>
-    </div>
-    <div id="sidebarClientList" style="overflow-y:auto; max-height:calc(100vh - 100px);">
-      {% if sidebar_clients %}
-        {% for c in sidebar_clients %}
-        <a href="{{ url_for('preparer.client_detail', user_id=c.user_id, year=sidebar_year) }}"
-           class="d-block px-3 py-2 text-decoration-none border-bottom sidebar-client-link
-                  {% if request.view_args and request.view_args.get('user_id') == c.user_id %}sidebar-client-active{% endif %}"
-           title="{{ c.display_name }}">
-          <span class="d-block text-truncate small">{{ c.display_name }}</span>
-          {% if c.filing_status %}
-          <span class="text-muted" style="font-size:0.68rem;">{{ c.filing_status | replace('_',' ') | title }}</span>
-          {% endif %}
-        </a>
-        {% endfor %}
-      {% else %}
-        <p class="text-muted small px-3 py-3 mb-0">No clients yet.</p>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- Main content -->
-  <div class="flex-grow-1 py-4 px-4" style="min-width:0;">
-
-    <!-- Flash messages -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-      <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-      </div>
-      {% endfor %}
-    {% endif %}
-    {% endwith %}
-
-    {% block content %}{% endblock %}
-  </div>
-
-</div><!-- /body layout -->
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{{ url_for('preparer.static', filename='preparer/dashboard.js') }}"></script>
-<script>
-(function() {
-  var sidebar   = document.getElementById('preparerSidebar');
-  var toggleBtn = document.getElementById('sidebarToggleBtn');
-  var STORAGE_KEY = 'preparer_sidebar_open';
-
-  function applyState(open) {
-    sidebar.style.width = open ? '220px' : '0px';
-    localStorage.setItem(STORAGE_KEY, open ? '1' : '0');
-  }
-
-  // Restore state (default open)
-  var saved = localStorage.getItem(STORAGE_KEY);
-  applyState(saved !== '0');
-
-  toggleBtn.addEventListener('click', function() {
-    var isOpen = sidebar.style.width !== '0px';
-    applyState(!isOpen);
-  });
-})();
-</script>
-</body>
-</html>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script><script src="{{ url_for('preparer.static', filename='preparer/dashboard.js') }}"></script>
+<script>(function(){var sidebar=document.getElementById('preparerSidebar'),toggle=document.getElementById('sidebarToggleBtn');toggle.addEventListener('click',function(){sidebar.classList.toggle('open')});var input=document.getElementById('globalClientSearch'),results=document.getElementById('globalSearchResults');var clients=[{% for c in sidebar_clients or [] %}{name:{{ c.display_name|tojson }},url:{{ url_for('preparer.client_detail',user_id=c.user_id,year=sidebar_year)|tojson }}},{% endfor %}];input.addEventListener('input',function(){var q=input.value.trim().toLowerCase();var found=q?clients.filter(function(c){return c.name.toLowerCase().includes(q)}).slice(0,6):[];results.innerHTML=found.map(function(c){return '<a href="'+c.url+'">'+c.name+'<span>Open →</span></a>'}).join('');results.classList.toggle('show',found.length>0)});document.addEventListener('click',function(e){if(!e.target.closest('.global-search'))results.classList.remove('show')})})();</script>
+</body></html>

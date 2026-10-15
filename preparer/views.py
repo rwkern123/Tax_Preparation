@@ -35,7 +35,7 @@ preparer_bp = Blueprint(
 def _inject_sidebar():
     """Inject sidebar client list into all preparer templates."""
     from flask import session, request as _req
-    if not session.get("logged_in"):
+    if not session.get("preparer_authed"):
         return {}
     try:
         ctx = _tax_year_context()
@@ -236,9 +236,31 @@ def client_list():
         preparer_db=_preparer_db(),
         tax_year=year,
     )
+    workflow = {"intake": [], "documents": [], "review": [], "complete": []}
+    for client in clients:
+        if client["status"] == "complete":
+            stage = "complete"
+        elif client["error_flag_count"] or client["flag_count"]:
+            stage = "review"
+        elif client["doc_count"] or client["questionnaire_completed"]:
+            stage = "documents"
+        else:
+            stage = "intake"
+        client["workflow_stage"] = stage
+        workflow[stage].append(client)
+
+    dashboard = {
+        "total": len(clients),
+        "review": len(workflow["review"]),
+        "waiting": len(workflow["intake"]) + len(workflow["documents"]),
+        "complete": len(workflow["complete"]),
+        "flags": sum(c["flag_count"] or 0 for c in clients),
+    }
     return render_template(
         "preparer/client_list.html",
         clients=clients,
+        workflow=workflow,
+        dashboard=dashboard,
         year=year,
         tax_years=ctx["tax_years"],
     )

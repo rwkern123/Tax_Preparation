@@ -1,80 +1,34 @@
-{% extends "preparer/base.html" %}
-{% set current_year = year %}
-
-{% block title %}Clients — {{ year }} — Tax Preparer Dashboard{% endblock %}
-
+{% extends "preparer/base.html" %}{% set current_year = year %}
+{% block title %}Overview · {{ year }} · TaxDesk{% endblock %}
 {% block content %}
-<div class="d-flex align-items-center mb-3 gap-3">
-  <h4 class="mb-0 fw-bold">Clients &mdash; {{ year }}</h4>
-  <span class="text-muted small">{{ clients | length }} client{{ 's' if clients | length != 1 }}</span>
-  <a href="{{ url_for('preparer.add_client') }}" class="btn btn-dark btn-sm ms-auto">+ Add Client</a>
-</div>
+<div class="page-heading"><div><h1>Good morning.</h1><p>Here’s what needs your attention for tax year {{ year }}.</p></div><a href="{{ url_for('preparer.add_client') }}" class="btn td-primary">+ Add client</a></div>
 
-{% if not clients %}
-<div class="alert alert-info">No clients found in the portal database for {{ year }}.</div>
-{% else %}
-<div class="card shadow-sm">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
-      <thead class="table-dark">
-        <tr>
-          <th>Client</th>
-          <th>Filing Status</th>
-          <th>Questionnaire</th>
-          <th class="text-center">Docs Received</th>
-          <th class="text-center">Parsed</th>
-          <th class="text-center">Flags</th>
-          <th class="text-center">Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in clients %}
-        <tr>
-          <td class="fw-semibold">{{ c.display_name }}</td>
-          <td class="text-capitalize text-muted">{{ c.filing_status | replace('_', ' ') }}</td>
-          <td>
-            {% if c.questionnaire_completed %}
-              <span class="badge bg-success">Complete</span>
-            {% elif c.doc_count > 0 %}
-              <span class="badge bg-warning text-dark">In Progress</span>
-            {% else %}
-              <span class="badge bg-secondary">Not Started</span>
-            {% endif %}
-          </td>
-          <td class="text-center">{{ c.doc_count }}</td>
-          <td class="text-center">
-            {{ c.parsed_count }}
-            {% if c.pending_count > 0 %}
-              <span class="badge bg-info text-dark ms-1" title="Parsing...">{{ c.pending_count }} pending</span>
-            {% endif %}
-            {% if c.error_doc_count > 0 %}
-              <span class="badge bg-danger ms-1">{{ c.error_doc_count }} failed</span>
-            {% endif %}
-          </td>
-          <td class="text-center">
-            {% if c.flag_count %}
-              <span class="badge bg-{{ 'danger' if c.error_flag_count else 'warning text-dark' }}">
-                {{ c.flag_count }}
-              </span>
-            {% else %}
-              <span class="text-muted">&mdash;</span>
-            {% endif %}
-          </td>
-          <td class="text-center">
-            <span class="badge bg-{{ c.status_class }} status-badge">
-              {{ c.status | replace('_', ' ') | title }}
-            </span>
-          </td>
-          <td>
-            <a href="{{ url_for('preparer.client_detail', user_id=c.user_id, year=year) }}"
-               class="btn btn-sm btn-outline-dark">Review &rsaquo;</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
+<section class="metric-grid" aria-label="Practice summary">
+  <article class="metric-card"><span>Active clients</span><strong>{{ dashboard.total }}</strong><small>{{ dashboard.total - dashboard.complete }} returns in progress</small></article>
+  <article class="metric-card"><span>Ready for review</span><strong>{{ dashboard.review }}</strong><small>{{ dashboard.flags }} open flag{{ 's' if dashboard.flags != 1 }}</small></article>
+  <article class="metric-card"><span>Waiting on clients</span><strong>{{ dashboard.waiting }}</strong><small>Intake or documents outstanding</small></article>
+  <article class="metric-card"><span>Returns complete</span><strong>{{ dashboard.complete }}</strong><small>{% if dashboard.total %}{{ ((dashboard.complete / dashboard.total) * 100) | round | int }}% of clients{% else %}No clients yet{% endif %}</small></article>
+</section>
+
+<section id="clients" class="work-panel">
+  <div class="work-panel-head"><div><h2>Client worklist</h2><p>{{ clients | length }} client{{ 's' if clients | length != 1 }}</p></div><div class="view-switch" role="group" aria-label="Choose client view"><button class="active" data-view="list">List</button><button data-view="board">Workflow</button></div></div>
+  {% if not clients %}<div class="empty-state"><strong>No clients for {{ year }}</strong><p>Add a client to begin their intake and document checklist.</p><a class="btn td-primary" href="{{ url_for('preparer.add_client') }}">Add your first client</a></div>{% else %}
+  <div id="listView" class="client-table-wrap"><table class="client-table"><thead><tr><th>Client</th><th>Questionnaire</th><th>Documents</th><th>Review</th><th>Status</th><th></th></tr></thead><tbody>
+    {% for c in clients %}<tr data-client="{{ c.display_name | lower }}">
+      <td><div class="table-person"><span class="client-initials">{{ c.display_name.split()[0][0] }}{{ c.display_name.split()[-1][0] }}</span><div><strong>{{ c.display_name }}</strong><small>{{ c.filing_status | replace('_',' ') | title }}</small></div></div></td>
+      <td>{% if c.questionnaire_completed %}<span class="td-pill good">Complete</span>{% elif c.doc_count %}<span class="td-pill warning">In progress</span>{% else %}<span class="td-pill muted">Not started</span>{% endif %}</td>
+      <td><strong>{{ c.doc_count }}</strong><small class="cell-note">{{ c.parsed_count }} parsed{% if c.pending_count %} · {{ c.pending_count }} pending{% endif %}</small></td>
+      <td>{% if c.flag_count %}<span class="td-pill {{ 'danger' if c.error_flag_count else 'warning' }}">{{ c.flag_count }} issue{{ 's' if c.flag_count != 1 }}</span>{% else %}<span class="td-pill good">Clear</span>{% endif %}</td>
+      <td><span class="td-pill {{ 'danger' if c.status == 'needs_attention' else ('good' if c.status == 'complete' else 'warning') }}">{{ c.status | replace('_',' ') | title }}</span></td>
+      <td><a class="row-action" href="{{ url_for('preparer.client_detail', user_id=c.user_id, year=year) }}">Open →</a></td>
+    </tr>{% endfor %}
+  </tbody></table></div>
+  <div id="boardView" class="workflow-board" hidden>
+    {% set columns = [('intake','Intake'),('documents','Documents'),('review','Preparer review'),('complete','Ready / complete')] %}
+    {% for key, label in columns %}<div class="workflow-column"><div class="workflow-column-head"><span>{{ label }}</span><b>{{ workflow[key] | length }}</b></div>
+      {% for c in workflow[key] %}<a class="case-card" href="{{ url_for('preparer.client_detail', user_id=c.user_id, year=year) }}"><div class="case-name"><strong>{{ c.display_name }}</strong><span>→</span></div><p>{{ c.filing_status | replace('_',' ') | title }} · {{ year }}</p><div class="case-tags">{% if c.flag_count %}<span class="td-pill {{ 'danger' if c.error_flag_count else 'warning' }}">{{ c.flag_count }} issues</span>{% endif %}{% if c.doc_count %}<span class="td-pill muted">{{ c.doc_count }} docs</span>{% endif %}{% if c.status == 'complete' %}<span class="td-pill good">Complete</span>{% endif %}</div><div class="case-progress"><i style="width:{{ 100 if c.status == 'complete' else (75 if key == 'review' else (45 if key == 'documents' else 15)) }}%"></i></div></a>{% else %}<div class="column-empty">No clients</div>{% endfor %}
+    </div>{% endfor %}
+  </div>{% endif %}
+</section>
+<script>(function(){var buttons=document.querySelectorAll('.view-switch button'),list=document.getElementById('listView'),board=document.getElementById('boardView');if(!board)return;function show(view){var isBoard=view==='board';list.hidden=isBoard;board.hidden=!isBoard;buttons.forEach(function(b){b.classList.toggle('active',b.dataset.view===view)});history.replaceState(null,'',isBoard?'?view=board#workflow':'#clients')}buttons.forEach(function(b){b.addEventListener('click',function(){show(b.dataset.view)})});if(new URLSearchParams(location.search).get('view')==='board')show('board')})();</script>
 {% endblock %}

@@ -6,29 +6,22 @@
 {% block content %}
 
 {# ─── Header ─── #}
-<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
-  <a href="{{ url_for('preparer.client_list', year=year) }}" class="btn btn-sm btn-outline-secondary">&larr; All Clients</a>
-  <h4 class="mb-0 fw-bold">{{ user.first_name }} {{ user.last_name }}</h4>
-  <span class="badge bg-secondary text-capitalize">{{ user.filing_status | replace('_', ' ') }}</span>
-  <span class="text-muted small">TY {{ year }}</span>
-
+{% set error_flags = all_flags | selectattr('severity', 'equalto', 'error') | list %}
+{% set warn_flags  = all_flags | selectattr('severity', 'equalto', 'warning') | list %}
+<a href="{{ url_for('preparer.client_list', year=year) }}" class="detail-back">← All clients</a>
+<div class="client-hero">
+  <span class="client-hero-avatar">{{ user.first_name[0] }}{{ user.last_name[0] }}</span>
+  <div><h1>{{ user.first_name }} {{ user.last_name }}</h1><p>{{ user.filing_status | replace('_', ' ') | title }} · Tax year {{ year }} · {{ parsed_docs | length }} document{{ 's' if parsed_docs | length != 1 }}</p></div>
+  <div class="client-hero-result">{% if tax_estimate %}<strong class="{{ 'refund' if tax_estimate.refund_or_owed >= 0 else 'owed' }}">{% if tax_estimate.refund_or_owed >= 0 %}${{ "{:,.0f}".format(tax_estimate.refund_or_owed) }}{% else %}(${{ "{:,.0f}".format(tax_estimate.refund_or_owed | abs) }}){% endif %}</strong><span>Estimated {{ 'refund' if tax_estimate.refund_or_owed >= 0 else 'amount owed' }}</span>{% else %}<strong>—</strong><span>Estimate pending</span>{% endif %}</div>
 </div>
-
-{# Summary chips #}
-<div class="d-flex gap-2 mb-4 flex-wrap">
-  <span class="chip chip-neutral">{{ parsed_docs | length }} document{{ 's' if parsed_docs | length != 1 }}</span>
-  {% set error_flags = all_flags | selectattr('severity', 'equalto', 'error') | list %}
-  {% set warn_flags  = all_flags | selectattr('severity', 'equalto', 'warning') | list %}
-  {% if error_flags %}
-  <span class="chip chip-danger">{{ error_flags | length }} error{{ 's' if error_flags | length != 1 }}</span>
-  {% endif %}
-  {% if warn_flags %}
-  <span class="chip chip-warning">{{ warn_flags | length }} warning{{ 's' if warn_flags | length != 1 }}</span>
-  {% endif %}
-  {% if follow_up %}
-  <span class="chip chip-info">{{ follow_up | length }} follow-up question{{ 's' if follow_up | length != 1 }}</span>
-  {% endif %}
+<div class="filing-steps">
+  <div class="{{ 'done' if questionnaire and questionnaire.completed else 'current' }}"><strong>{{ '✓' if questionnaire and questionnaire.completed else '1' }} Intake</strong><span>{{ 'Complete' if questionnaire and questionnaire.completed else 'In progress' }}</span></div>
+  <div class="{{ 'done' if parsed_docs else '' }}"><strong>{{ '✓' if parsed_docs else '2' }} Documents</strong><span>{{ parsed_docs | length }} received</span></div>
+  <div class="{{ 'current' if all_flags else 'done' }}"><strong>{{ '3' if all_flags else '✓' }} Review</strong><span>{{ all_flags | length }} issue{{ 's' if all_flags | length != 1 }}</span></div>
+  <div><strong>4 Return</strong><span>{{ 'Draft ready' if form_1040_data else 'Pending' }}</span></div>
+  <div><strong>5 File</strong><span>Not started</span></div>
 </div>
+<div class="client-detail-layout"><div class="client-detail-main">
 
 {# ─── Tabs ─── #}
 <ul class="nav nav-tabs mb-3" id="clientTabs" role="tablist">
@@ -2300,6 +2293,14 @@
   </div>{# /tab-taxreturn #}
 
 </div>{# tab-content #}
+</div><aside class="review-rail">
+  <h2>Review checklist</h2>
+  {% if all_flags %}
+    {% for flag in all_flags[:5] %}<div class="review-item {{ flag.severity }}"><strong>{{ flag.message or (flag.type | replace('_',' ') | title) }}</strong><p>{{ flag.document }}</p><button type="button" data-open-flags>Review issue →</button></div>{% endfor %}
+  {% else %}<div class="review-clear"><span>✓</span><strong>No open issues</strong><p>Parsed documents have no outstanding flags.</p></div>{% endif %}
+  {% if follow_up %}<h2>Follow-up</h2>{% for question in follow_up[:3] %}<div class="review-item info"><strong>Client question</strong><p>{{ question }}</p></div>{% endfor %}{% endif %}
+  <div class="return-snapshot"><span>Return snapshot</span>{% if tax_estimate %}<strong>{% if tax_estimate.refund_or_owed >= 0 %}${{ "{:,.0f}".format(tax_estimate.refund_or_owed) }}{% else %}(${{ "{:,.0f}".format(tax_estimate.refund_or_owed | abs) }}){% endif %}</strong><small>Estimated federal {{ 'refund' if tax_estimate.refund_or_owed >= 0 else 'amount owed' }}</small>{% else %}<strong>—</strong><small>Complete document review to calculate</small>{% endif %}</div>
+</aside></div>
 
 <script>
 document.querySelectorAll('.btn-delete-upload').forEach(function(btn) {
@@ -2338,5 +2339,11 @@ document.querySelectorAll('.btn-delete-upload').forEach(function(btn) {
     });
   }
 })();
+document.querySelectorAll('[data-open-flags]').forEach(function(button) {
+  button.addEventListener('click', function() {
+    var tab = document.querySelector('[data-bs-target="#tab-flags"]');
+    if (tab) new bootstrap.Tab(tab).show();
+  });
+});
 </script>
 {% endblock %}
